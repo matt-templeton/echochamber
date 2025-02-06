@@ -5,10 +5,14 @@ import '../repositories/user_repository.dart';
 
 class EmailSignUpForm extends StatefulWidget {
   final VoidCallback onBack;
+  final firebase_auth.FirebaseAuth auth;
+  final UserRepository userRepository;
 
   const EmailSignUpForm({
     super.key,
     required this.onBack,
+    required this.auth,
+    required this.userRepository,
   });
 
   @override
@@ -21,7 +25,6 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _userRepository = UserRepository();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -44,8 +47,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
 
     try {
       // Create the user in Firebase Auth
-      final authResult = await firebase_auth.FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
+      final authResult = await widget.auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
@@ -66,7 +68,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           },
         );
 
-        await _userRepository.createUser(user);
+        await widget.userRepository.createUser(user);
 
         // Update display name in Firebase Auth
         await authResult.user!.updateDisplayName(_nameController.text.trim());
@@ -140,6 +142,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
             const SizedBox(height: 16),
           ],
           TextFormField(
+            key: const Key('nameField'),
             controller: _nameController,
             decoration: const InputDecoration(
               labelText: 'Name',
@@ -154,6 +157,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           ),
           const SizedBox(height: 16),
           TextFormField(
+            key: const Key('emailField'),
             controller: _emailController,
             decoration: const InputDecoration(
               labelText: 'Email',
@@ -172,6 +176,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           ),
           const SizedBox(height: 16),
           TextFormField(
+            key: const Key('passwordField'),
             controller: _passwordController,
             decoration: const InputDecoration(
               labelText: 'Password',
@@ -190,6 +195,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           ),
           const SizedBox(height: 16),
           TextFormField(
+            key: const Key('confirmPasswordField'),
             controller: _confirmPasswordController,
             decoration: const InputDecoration(
               labelText: 'Confirm Password',

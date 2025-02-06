@@ -38,7 +38,7 @@ class User {
     this.privacySettings,
     this.notificationSettings,
   }) {
-    print('User constructor called with bio: $bio'); // Debug constructor
+    // print('User constructor called with bio: $bio'); // Debug constructor
   }
 
   // Create a User from a Firestore document

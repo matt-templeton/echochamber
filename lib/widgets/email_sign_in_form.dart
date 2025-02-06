@@ -3,10 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 class EmailSignInForm extends StatefulWidget {
   final VoidCallback onBack;
+  final firebase_auth.FirebaseAuth auth;
 
   const EmailSignInForm({
     super.key,
     required this.onBack,
+    required this.auth,
   });
 
   @override
@@ -36,7 +38,7 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
     });
 
     try {
-      await firebase_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+      await widget.auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
