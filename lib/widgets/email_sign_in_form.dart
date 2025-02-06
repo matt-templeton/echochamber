@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
-import '../services/firebase_service.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 class EmailSignInForm extends StatefulWidget {
   final VoidCallback onBack;
-  final VoidCallback? onSignInSuccess;
-  final VoidCallback onSignUpInstead;
 
   const EmailSignInForm({
     super.key,
     required this.onBack,
-    this.onSignInSuccess,
-    required this.onSignUpInstead,
   });
 
   @override
@@ -21,7 +17,6 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _firebaseService = FirebaseService();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -32,7 +27,7 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
     super.dispose();
   }
 
-  Future<void> _handleSignIn() async {
+  Future<void> _signIn() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -41,23 +36,21 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
     });
 
     try {
-      await _firebaseService.signInWithEmail(
+      await firebase_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Signed in successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        widget.onSignInSuccess?.call();
+        Navigator.of(context).pop(); // Close the bottom sheet
       }
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = _getErrorMessage(e.code);
+      });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = 'An unexpected error occurred. Please try again.';
       });
     } finally {
       if (mounted) {
@@ -65,6 +58,21 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  String _getErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No user found with this email address.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled. Please contact support.';
+      default:
+        return 'An error occurred. Please try again.';
     }
   }
 
@@ -83,6 +91,23 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
             ),
           ),
           const SizedBox(height: 24),
+          if (_errorMessage != null) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _errorMessage!,
+                style: TextStyle(
+                  color: Colors.red.shade900,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           TextFormField(
             controller: _emailController,
             decoration: const InputDecoration(
@@ -115,21 +140,11 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
               return null;
             },
           ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              style: const TextStyle(
-                color: Colors.red,
-                fontSize: 14,
-              ),
-            ),
-          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _handleSignIn,
+              onPressed: _isLoading ? null : _signIn,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Theme.of(context).primaryColor,
@@ -145,13 +160,6 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
                       ),
                     )
                   : const Text('Sign In'),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: TextButton(
-              onPressed: _isLoading ? null : widget.onSignUpInstead,
-              child: const Text("Don't have an account? Sign up instead"),
             ),
           ),
           const Spacer(),

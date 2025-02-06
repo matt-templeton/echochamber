@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import '../services/firebase_service.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../models/user_model.dart' as app_models;
+import '../repositories/user_repository.dart';
 
 class EmailSignUpForm extends StatefulWidget {
   final VoidCallback onBack;
-  final VoidCallback? onSignUpSuccess;
-  final VoidCallback onSignInInstead;
 
   const EmailSignUpForm({
     super.key,
     required this.onBack,
-    this.onSignUpSuccess,
-    required this.onSignInInstead,
   });
 
   @override
@@ -19,24 +17,24 @@ class EmailSignUpForm extends StatefulWidget {
 
 class _EmailSignUpFormState extends State<EmailSignUpForm> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _nameController = TextEditingController();
-  final _firebaseService = FirebaseService();
+  final _userRepository = UserRepository();
   bool _isLoading = false;
   String? _errorMessage;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _nameController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSignUp() async {
+  Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -45,24 +43,45 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
     });
 
     try {
-      await _firebaseService.signUpWithEmail(
+      // Create the user in Firebase Auth
+      final authResult = await firebase_auth.FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        name: _nameController.text.trim(),
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created successfully! Please verify your email.'),
-            backgroundColor: Colors.green,
-          ),
+      if (authResult.user != null) {
+        // Create the user document in Firestore
+        final user = app_models.User(
+          id: authResult.user!.uid,
+          name: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          createdAt: DateTime.now(),
+          lastActive: DateTime.now(),
+          followersCount: 0,
+          followingCount: 0,
+          onboardingProgress: {
+            'profile_complete': false,
+            'first_video': false,
+          },
         );
-        widget.onSignUpSuccess?.call();
+
+        await _userRepository.createUser(user);
+
+        // Update display name in Firebase Auth
+        await authResult.user!.updateDisplayName(_nameController.text.trim());
+
+        if (mounted) {
+          Navigator.of(context).pop(); // Close the bottom sheet
+        }
       }
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = _getErrorMessage(e.code);
+      });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = 'An unexpected error occurred. Please try again.';
       });
     } finally {
       if (mounted) {
@@ -70,6 +89,21 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  String _getErrorMessage(String code) {
+    switch (code) {
+      case 'email-already-in-use':
+        return 'This email is already registered. Please sign in instead.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'operation-not-allowed':
+        return 'Email/password accounts are not enabled. Please contact support.';
+      case 'weak-password':
+        return 'Please enter a stronger password.';
+      default:
+        return 'An error occurred. Please try again.';
     }
   }
 
@@ -88,10 +122,27 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
             ),
           ),
           const SizedBox(height: 24),
+          if (_errorMessage != null) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _errorMessage!,
+                style: TextStyle(
+                  color: Colors.red.shade900,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           TextFormField(
             controller: _nameController,
             decoration: const InputDecoration(
-              labelText: 'Full Name',
+              labelText: 'Name',
               border: OutlineInputBorder(),
             ),
             validator: (value) {
@@ -155,21 +206,11 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
               return null;
             },
           ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              style: const TextStyle(
-                color: Colors.red,
-                fontSize: 14,
-              ),
-            ),
-          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _handleSignUp,
+              onPressed: _isLoading ? null : _signUp,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Theme.of(context).primaryColor,
@@ -185,13 +226,6 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
                       ),
                     )
                   : const Text('Sign Up'),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: TextButton(
-              onPressed: _isLoading ? null : widget.onSignInInstead,
-              child: const Text('Already have an account? Sign in instead'),
             ),
           ),
           const Spacer(),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../widgets/primary_nav_bar.dart';
 import '../../widgets/video_player_widget.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -160,7 +160,11 @@ class _HomeScreenState extends State<HomeScreen> {
         onItemSelected: (index) {
           if (index != _selectedIndex) {
             if (index == 4) {
-              context.go('/profile');
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => const ProfileScreen(),
+                ),
+              );
             }
             setState(() => _selectedIndex = index);
           }

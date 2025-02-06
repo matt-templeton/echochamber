@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
-import 'services/application_state.dart';
-import 'router.dart';
+import 'screens/home/home_screen.dart';
+import 'services/firebase_service.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -14,12 +15,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
-  runApp(
-    ChangeNotifierProvider(
-      create: (context) => ApplicationState(),
-      builder: (context, child) => const MyApp(),
-    ),
-  );
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -27,13 +23,24 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Echo Chamber',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return MultiProvider(
+      providers: [
+        Provider<AuthService>(
+          create: (_) => AuthService(),
+        ),
+        StreamProvider<User?>(
+          create: (context) => context.read<AuthService>().authStateChanges,
+          initialData: null,
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Echo Chamber',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        home: const HomeScreen(),
       ),
-      routerConfig: createRouter(),
     );
   }
 }
