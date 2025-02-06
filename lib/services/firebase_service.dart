@@ -3,8 +3,14 @@ import '../models/user_model.dart' as app_models;
 import '../repositories/user_repository.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final UserRepository _userRepository = UserRepository();
+  final FirebaseAuth _auth;
+  final UserRepository _userRepository;
+
+  AuthService({
+    FirebaseAuth? auth,
+    UserRepository? userRepository,
+  }) : _auth = auth ?? FirebaseAuth.instance,
+       _userRepository = userRepository ?? UserRepository();
 
   // Get the current user
   User? get currentUser => _auth.currentUser;

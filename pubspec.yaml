@@ -42,8 +42,10 @@ dev_dependencies:
   
   # Testing
   mockito: ^5.4.4
+  build_runner: ^2.4.8
   fake_cloud_firestore: ^2.4.8
   firebase_auth_mocks: ^0.13.0
+  firebase_storage_mocks: ^0.6.1
 
 flutter:
   uses-material-design: true 

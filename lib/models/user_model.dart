@@ -19,7 +19,7 @@ class User {
   final Map<String, dynamic>? privacySettings;
   final Map<String, dynamic>? notificationSettings;
 
-  const User({
+  User({
     required this.id,
     required this.name,
     required this.email,
@@ -37,7 +37,9 @@ class User {
     this.recentVideos,
     this.privacySettings,
     this.notificationSettings,
-  });
+  }) {
+    print('User constructor called with bio: $bio'); // Debug constructor
+  }
 
   // Create a User from a Firestore document
   factory User.fromFirestore(DocumentSnapshot doc) {
@@ -113,24 +115,30 @@ class User {
     Map<String, dynamic>? privacySettings,
     Map<String, dynamic>? notificationSettings,
   }) {
-    return User(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      email: email ?? this.email,
-      profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
-      bio: bio ?? this.bio,
-      socialMediaLinks: socialMediaLinks ?? this.socialMediaLinks,
-      createdAt: createdAt ?? this.createdAt,
-      lastActive: lastActive ?? this.lastActive,
-      timezone: timezone ?? this.timezone,
-      followersCount: followersCount ?? this.followersCount,
-      followingCount: followingCount ?? this.followingCount,
-      onboardingProgress: onboardingProgress ?? this.onboardingProgress,
-      monetization: monetization ?? this.monetization,
-      stats: stats ?? this.stats,
-      recentVideos: recentVideos ?? this.recentVideos,
-      privacySettings: privacySettings ?? this.privacySettings,
-      notificationSettings: notificationSettings ?? this.notificationSettings,
+    print('copyWith called with bio: $bio'); // Debug print for input
+    print('current bio value: ${this.bio}'); // Debug print for current value
+    print('identical check result: ${identical(bio, this.bio)}'); // Updated debug print
+
+    final result = User(
+      id: identical(id, this.id) ? this.id : id ?? this.id,
+      name: identical(name, this.name) ? this.name : name ?? this.name,
+      email: identical(email, this.email) ? this.email : email ?? this.email,
+      profilePictureUrl: identical(profilePictureUrl, this.profilePictureUrl) ? this.profilePictureUrl : profilePictureUrl,
+      bio: identical(bio, this.bio) ? this.bio : bio,
+      socialMediaLinks: identical(socialMediaLinks, this.socialMediaLinks) ? this.socialMediaLinks : socialMediaLinks,
+      createdAt: identical(createdAt, this.createdAt) ? this.createdAt : createdAt ?? this.createdAt,
+      lastActive: identical(lastActive, this.lastActive) ? this.lastActive : lastActive ?? this.lastActive,
+      timezone: identical(timezone, this.timezone) ? this.timezone : timezone,
+      followersCount: identical(followersCount, this.followersCount) ? this.followersCount : followersCount ?? this.followersCount,
+      followingCount: identical(followingCount, this.followingCount) ? this.followingCount : followingCount ?? this.followingCount,
+      onboardingProgress: identical(onboardingProgress, this.onboardingProgress) ? this.onboardingProgress : onboardingProgress,
+      monetization: identical(monetization, this.monetization) ? this.monetization : monetization,
+      stats: identical(stats, this.stats) ? this.stats : stats,
+      recentVideos: identical(recentVideos, this.recentVideos) ? this.recentVideos : recentVideos,
+      privacySettings: identical(privacySettings, this.privacySettings) ? this.privacySettings : privacySettings,
+      notificationSettings: identical(notificationSettings, this.notificationSettings) ? this.notificationSettings : notificationSettings,
     );
+    print('new bio value after copy: ${result.bio}'); // Debug print for result
+    return result;
   }
 } 
