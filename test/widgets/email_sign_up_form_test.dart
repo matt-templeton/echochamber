@@ -33,6 +33,25 @@ class DelayedMockAuth extends MockFirebaseAuth {
   }
 }
 
+// Create an error throwing mock auth
+class ErrorThrowingMockAuth extends MockFirebaseAuth {
+  final firebase_auth.FirebaseAuthException exception;
+
+  ErrorThrowingMockAuth({
+    required this.exception,
+    bool signedIn = false,
+    MockUser? mockUser,
+  }) : super(signedIn: signedIn, mockUser: mockUser);
+
+  @override
+  Future<firebase_auth.UserCredential> createUserWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    throw exception;
+  }
+}
+
 @GenerateMocks([UserRepository])
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -226,6 +245,270 @@ void main() {
 
         // Wait for the auth delay to complete
         await tester.pumpAndSettle();
+      });
+
+      group('Error Handling', () {
+        testWidgets('shows error message when email is already in use', (WidgetTester tester) async {
+          // Setup auth to throw email-already-in-use error
+          mockAuth = ErrorThrowingMockAuth(
+            exception: firebase_auth.FirebaseAuthException(
+              code: 'email-already-in-use',
+              message: 'Email already in use',
+            ),
+          );
+          
+          await pumpEmailSignUpForm(tester);
+
+          // Enter valid credentials
+          await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+          await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+          await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+          await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+          // Tap sign up button
+          await tester.tap(find.byType(ElevatedButton));
+          await tester.pumpAndSettle();
+
+          // Verify error message
+          expect(
+            find.text('This email is already registered. Please sign in instead.'),
+            findsOneWidget,
+          );
+        });
+
+        testWidgets('shows error message when operation is not allowed', (WidgetTester tester) async {
+          // Setup auth to throw operation-not-allowed error
+          mockAuth = ErrorThrowingMockAuth(
+            exception: firebase_auth.FirebaseAuthException(
+              code: 'operation-not-allowed',
+              message: 'Operation not allowed',
+            ),
+          );
+          
+          await pumpEmailSignUpForm(tester);
+
+          // Enter valid credentials
+          await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+          await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+          await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+          await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+          // Tap sign up button
+          await tester.tap(find.byType(ElevatedButton));
+          await tester.pumpAndSettle();
+
+          // Verify error message
+          expect(
+            find.text('Email/password accounts are not enabled. Please contact support.'),
+            findsOneWidget,
+          );
+        });
+
+        testWidgets('shows error message for weak password', (WidgetTester tester) async {
+          // Setup auth to throw weak-password error
+          mockAuth = ErrorThrowingMockAuth(
+            exception: firebase_auth.FirebaseAuthException(
+              code: 'weak-password',
+              message: 'Password is too weak',
+            ),
+          );
+          
+          await pumpEmailSignUpForm(tester);
+
+          // Enter valid credentials
+          await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+          await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+          await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+          await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+          // Tap sign up button
+          await tester.tap(find.byType(ElevatedButton));
+          await tester.pumpAndSettle();
+
+          // Verify error message
+          expect(
+            find.text('Please enter a stronger password.'),
+            findsOneWidget,
+          );
+        });
+
+        // testWidgets('clears error message and closes form on successful retry', (WidgetTester tester) async {
+        //   // Setup auth to throw an error first
+        //   mockAuth = ErrorThrowingMockAuth(
+        //     exception: firebase_auth.FirebaseAuthException(
+        //       code: 'email-already-in-use',
+        //       message: 'Email already in use',
+        //     ),
+        //   );
+          
+        //   await pumpEmailSignUpForm(tester);
+
+        //   // Enter valid credentials
+        //   await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+        //   await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+        //   await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+        //   await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+        //   // Tap sign up button to trigger error
+        //   await tester.tap(find.byType(ElevatedButton));
+        //   await tester.pumpAndSettle();
+
+        //   // Verify error message is shown
+        //   expect(
+        //     find.text('This email is already registered. Please sign in instead.'),
+        //     findsOneWidget,
+        //   );
+
+        //   // Change auth to succeed
+        //   mockAuth = MockFirebaseAuth(
+        //     mockUser: MockUser(uid: 'test-user-id'),
+        //     signedIn: false,
+        //   );
+
+        //   // Tap sign up button again
+        //   await tester.tap(find.byType(ElevatedButton));
+          
+        //   // Wait for validation and initial setState
+        //   await tester.pump();
+        //   // Wait for the error message to be cleared
+        //   await tester.pump();
+        //   // Wait for any animations
+        //   await tester.pump(const Duration(milliseconds: 50));
+
+        //   // Verify error message is cleared
+        //   expect(
+        //     find.text('This email is already registered. Please sign in instead.'),
+        //     findsNothing,
+        //   );
+
+        //   // Wait for the auth delay to complete
+        //   await tester.pumpAndSettle();
+
+        //   // Verify form is closed
+        //   expect(find.byType(EmailSignUpForm), findsNothing);
+        // });
+      
+      });
+
+      group('UI State Management', () {
+        testWidgets('disables form fields during loading', (WidgetTester tester) async {
+          // Setup delayed auth to ensure we can check the loading state
+          mockAuth = DelayedMockAuth(
+            delay: const Duration(seconds: 2),
+            signedIn: false,
+            mockUser: MockUser(uid: 'test-user-id'),
+          );
+          
+          await pumpEmailSignUpForm(tester);
+
+          // Enter valid credentials
+          await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+          await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+          await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+          await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+          // Tap sign up button
+          await tester.tap(find.byType(ElevatedButton));
+          await tester.pump();
+
+          // Verify form fields are disabled
+          final nameField = tester.widget<TextFormField>(find.byKey(const Key('nameField')));
+          final emailField = tester.widget<TextFormField>(find.byKey(const Key('emailField')));
+          final passwordField = tester.widget<TextFormField>(find.byKey(const Key('passwordField')));
+          final confirmPasswordField = tester.widget<TextFormField>(find.byKey(const Key('confirmPasswordField')));
+
+          expect(nameField.enabled, isFalse);
+          expect(emailField.enabled, isFalse);
+          expect(passwordField.enabled, isFalse);
+          expect(confirmPasswordField.enabled, isFalse);
+
+          // Wait for the auth delay to complete
+          await tester.pumpAndSettle();
+        });
+
+        testWidgets('disables back button during loading', (WidgetTester tester) async {
+          // Setup delayed auth to ensure we can check the loading state
+          mockAuth = DelayedMockAuth(
+            delay: const Duration(seconds: 2),
+            signedIn: false,
+            mockUser: MockUser(uid: 'test-user-id'),
+          );
+          
+          await pumpEmailSignUpForm(tester);
+
+          // Enter valid credentials
+          await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+          await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+          await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+          await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+          // Tap sign up button
+          await tester.tap(find.byType(ElevatedButton));
+          await tester.pump();
+
+          // Verify back button is disabled
+          final backButton = tester.widget<TextButton>(find.widgetWithText(TextButton, '← Go back'));
+          expect(backButton.onPressed, isNull);
+
+          // Wait for the auth delay to complete
+          await tester.pumpAndSettle();
+        });
+
+        // testWidgets('clears error message when form is resubmitted', (WidgetTester tester) async {
+        //   // Setup auth to throw an error first
+        //   mockAuth = ErrorThrowingMockAuth(
+        //     exception: firebase_auth.FirebaseAuthException(
+        //       code: 'email-already-in-use',
+        //       message: 'Email already in use',
+        //     ),
+        //   );
+          
+        //   await pumpEmailSignUpForm(tester);
+
+        //   // Enter valid credentials
+        //   await tester.enterText(find.byKey(const Key('nameField')), 'Test User');
+        //   await tester.enterText(find.byKey(const Key('emailField')), 'test@example.com');
+        //   await tester.enterText(find.byKey(const Key('passwordField')), 'password123');
+        //   await tester.enterText(find.byKey(const Key('confirmPasswordField')), 'password123');
+
+        //   // Tap sign up button to trigger error
+        //   await tester.tap(find.byType(ElevatedButton));
+        //   await tester.pumpAndSettle();
+
+        //   // Verify error message is shown
+        //   expect(
+        //     find.text('This email is already registered. Please sign in instead.'),
+        //     findsOneWidget,
+        //   );
+
+        //   // Change auth to succeed
+        //   mockAuth = MockFirebaseAuth(
+        //     mockUser: MockUser(uid: 'test-user-id'),
+        //     signedIn: false,
+        //   );
+
+        //   // Tap sign up button again
+        //   await tester.tap(find.byType(ElevatedButton));
+          
+        //   // Wait for validation and initial setState
+        //   await tester.pump();
+        //   // Wait for the error message to be cleared
+        //   await tester.pump();
+        //   // Wait for any animations
+        //   await tester.pump(const Duration(milliseconds: 50));
+
+        //   // Verify error message is cleared
+        //   expect(
+        //     find.text('This email is already registered. Please sign in instead.'),
+        //     findsNothing,
+        //   );
+
+        //   // Wait for the auth delay to complete
+        //   await tester.pumpAndSettle();
+
+        //   // Verify form is closed
+        //   expect(find.byType(EmailSignUpForm), findsNothing);
+        // });
       });
     });
   });

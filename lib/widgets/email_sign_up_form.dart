@@ -38,11 +38,14 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
   }
 
   Future<void> _signUp() async {
+    setState(() {
+      _errorMessage = null;
+    });
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
     });
 
     try {
@@ -144,6 +147,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           TextFormField(
             key: const Key('nameField'),
             controller: _nameController,
+            enabled: !_isLoading,
             decoration: const InputDecoration(
               labelText: 'Name',
               border: OutlineInputBorder(),
@@ -159,6 +163,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           TextFormField(
             key: const Key('emailField'),
             controller: _emailController,
+            enabled: !_isLoading,
             decoration: const InputDecoration(
               labelText: 'Email',
               border: OutlineInputBorder(),
@@ -178,6 +183,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           TextFormField(
             key: const Key('passwordField'),
             controller: _passwordController,
+            enabled: !_isLoading,
             decoration: const InputDecoration(
               labelText: 'Password',
               border: OutlineInputBorder(),
@@ -197,6 +203,7 @@ class _EmailSignUpFormState extends State<EmailSignUpForm> {
           TextFormField(
             key: const Key('confirmPasswordField'),
             controller: _confirmPasswordController,
+            enabled: !_isLoading,
             decoration: const InputDecoration(
               labelText: 'Confirm Password',
               border: OutlineInputBorder(),
