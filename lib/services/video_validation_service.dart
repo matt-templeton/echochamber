@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter/media_information.dart';
 import 'package:ffmpeg_kit_flutter/stream_information.dart';
+import 'package:ffmpeg_kit_flutter/return_code.dart';
 import '../models/video_model.dart';
 
 class VideoValidationResult {
@@ -76,32 +78,36 @@ class VideoValidationService {
     }
   }
 
-  Future<MediaInformation?> _getMediaInformation(String videoPath) async {
+  Future<Map<String, dynamic>?> _getMediaInformation(String videoPath) async {
     try {
-      final session = await FFprobeKit.getMediaInformation(videoPath);
-      return session.getMediaInformation();
+      final session = await FFprobeKit.execute(
+        '-v quiet -print_format json -show_format -show_streams "$videoPath"'
+      );
+      final output = await session.getOutput();
+      if (output == null) return null;
+
+      final info = json.decode(output) as Map<String, dynamic>;
+      return info;
     } catch (e) {
       return null;
     }
   }
 
-  Future<VideoValidationMetadata> _extractMetadata(MediaInformation mediaInfo) async {
-    final format = mediaInfo.getFormat();
-    final streams = mediaInfo.getStreams();
-    
-    // Find the video stream
+  Future<VideoValidationMetadata> _extractMetadata(Map<String, dynamic> mediaInfo) async {
+    final format = mediaInfo['format'] as Map<String, dynamic>;
+    final streams = mediaInfo['streams'] as List<dynamic>;
     final videoStream = streams.firstWhere(
-      (stream) => stream.getType()?.toLowerCase() == 'video',
-      orElse: () => streams.first,
-    );
+      (s) => s['codec_type'] == 'video',
+      orElse: () => streams[0],
+    ) as Map<String, dynamic>;
 
     return VideoValidationMetadata(
-      width: int.tryParse(videoStream.getWidth() ?? ''),
-      height: int.tryParse(videoStream.getHeight() ?? ''),
-      duration: double.tryParse(format.getDuration() ?? ''),
-      codec: videoStream.getCodec(),
-      format: format.getFormat(),
-      bitrate: int.tryParse(format.getBitrate() ?? ''),
+      width: int.tryParse(videoStream['width']?.toString() ?? ''),
+      height: int.tryParse(videoStream['height']?.toString() ?? ''),
+      duration: double.tryParse(format['duration']?.toString() ?? ''),
+      codec: videoStream['codec_name']?.toString(),
+      format: format['format_name']?.toString(),
+      bitrate: int.tryParse(format['bit_rate']?.toString() ?? ''),
     );
   }
 
@@ -112,8 +118,8 @@ class VideoValidationService {
         '-v error -i "$videoPath" -f null -'
       );
       
-      // If return code is 0, the file is valid
-      return session.getReturnCode()?.getValue() == 0;
+      final returnCode = await session.getReturnCode();
+      return returnCode != null && ReturnCode.isSuccess(returnCode);
     } catch (e) {
       return false;
     }

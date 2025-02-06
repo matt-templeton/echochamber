@@ -47,3 +47,7 @@ app.*.map.json
 perspective/
 persp/
 doc/
+
+# Firebase service account
+scripts/seed/service-account.json
+/scripts
