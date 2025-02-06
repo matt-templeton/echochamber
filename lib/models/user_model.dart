@@ -16,6 +16,8 @@ class User {
   final Map<String, dynamic>? monetization;
   final Map<String, int>? stats;
   final List<Map<String, dynamic>>? recentVideos;
+  final Map<String, dynamic>? privacySettings;
+  final Map<String, dynamic>? notificationSettings;
 
   const User({
     required this.id,
@@ -33,6 +35,8 @@ class User {
     this.monetization,
     this.stats,
     this.recentVideos,
+    this.privacySettings,
+    this.notificationSettings,
   });
 
   // Create a User from a Firestore document
@@ -62,6 +66,8 @@ class User {
       recentVideos: data['recentVideos'] != null 
           ? List<Map<String, dynamic>>.from(data['recentVideos'] as List)
           : null,
+      privacySettings: data['privacySettings'] as Map<String, dynamic>?,
+      notificationSettings: data['notificationSettings'] as Map<String, dynamic>?,
     );
   }
 
@@ -82,6 +88,8 @@ class User {
       if (monetization != null) 'monetization': monetization,
       if (stats != null) 'stats': stats,
       if (recentVideos != null) 'recentVideos': recentVideos,
+      if (privacySettings != null) 'privacySettings': privacySettings,
+      if (notificationSettings != null) 'notificationSettings': notificationSettings,
     };
   }
 
@@ -102,6 +110,8 @@ class User {
     Map<String, dynamic>? monetization,
     Map<String, int>? stats,
     List<Map<String, dynamic>>? recentVideos,
+    Map<String, dynamic>? privacySettings,
+    Map<String, dynamic>? notificationSettings,
   }) {
     return User(
       id: id ?? this.id,
@@ -119,6 +129,8 @@ class User {
       monetization: monetization ?? this.monetization,
       stats: stats ?? this.stats,
       recentVideos: recentVideos ?? this.recentVideos,
+      privacySettings: privacySettings ?? this.privacySettings,
+      notificationSettings: notificationSettings ?? this.notificationSettings,
     );
   }
 } 

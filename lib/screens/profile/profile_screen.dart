@@ -6,6 +6,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 import '../../widgets/primary_nav_bar.dart';
 import '../../widgets/sign_in_bottom_sheet.dart';
+import '../../widgets/privacy_settings_sheet.dart';
+import '../../widgets/notification_settings_sheet.dart';
 import '../../services/firebase_service.dart';
 import '../../repositories/user_repository.dart';
 import '../home/home_screen.dart';
@@ -302,6 +304,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _showPrivacySettings() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const PrivacySettingsSheet(),
+    );
+  }
+
+  void _showNotificationSettings() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const NotificationSettingsSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<User?>();
@@ -461,6 +481,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ),
+              ),
+              const SizedBox(height: 24),
+
+              // Privacy Settings Button
+              OutlinedButton.icon(
+                onPressed: _showPrivacySettings,
+                icon: const Icon(Icons.lock_outline),
+                label: const Text('Privacy Settings'),
+              ),
+              const SizedBox(height: 16),
+
+              // Notification Settings Button
+              OutlinedButton.icon(
+                onPressed: _showNotificationSettings,
+                icon: const Icon(Icons.notifications_outlined),
+                label: const Text('Notification Settings'),
               ),
               const SizedBox(height: 24),
 
