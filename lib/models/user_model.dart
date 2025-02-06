@@ -115,9 +115,6 @@ class User {
     Map<String, dynamic>? privacySettings,
     Map<String, dynamic>? notificationSettings,
   }) {
-    print('copyWith called with bio: $bio'); // Debug print for input
-    print('current bio value: ${this.bio}'); // Debug print for current value
-    print('identical check result: ${identical(bio, this.bio)}'); // Updated debug print
 
     final result = User(
       id: identical(id, this.id) ? this.id : id ?? this.id,
@@ -138,7 +135,6 @@ class User {
       privacySettings: identical(privacySettings, this.privacySettings) ? this.privacySettings : privacySettings,
       notificationSettings: identical(notificationSettings, this.notificationSettings) ? this.notificationSettings : notificationSettings,
     );
-    print('new bio value after copy: ${result.bio}'); // Debug print for result
     return result;
   }
 } 

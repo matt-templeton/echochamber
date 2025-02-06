@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../repositories/user_repository.dart';
 import 'email_sign_up_form.dart';
 import 'email_sign_in_form.dart';
 import 'not_implemented_sign_in.dart';
@@ -19,6 +21,8 @@ class SignInBottomSheet extends StatefulWidget {
 class _SignInBottomSheetState extends State<SignInBottomSheet> {
   Widget? _currentForm;
   bool _showingSignUp = false;
+  final _auth = FirebaseAuth.instance;
+  final _userRepository = UserRepository();
 
   @override
   void initState() {
@@ -31,6 +35,8 @@ class _SignInBottomSheetState extends State<SignInBottomSheet> {
       _showingSignUp = true;
       _currentForm = EmailSignUpForm(
         onBack: () => setState(() => _currentForm = null),
+        auth: _auth,
+        userRepository: _userRepository,
       );
     });
   }
@@ -40,6 +46,7 @@ class _SignInBottomSheetState extends State<SignInBottomSheet> {
       _showingSignUp = false;
       _currentForm = EmailSignInForm(
         onBack: () => setState(() => _currentForm = null),
+        auth: _auth,
       );
     });
   }
