@@ -5,30 +5,36 @@ import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:path/path.dart' as path;
 import 'package:echochamber/services/video_service.dart';
 import 'package:echochamber/services/video_validation_service.dart';
 import 'package:echochamber/repositories/video_repository.dart';
 import 'package:echochamber/models/video_model.dart';
+import 'package:firebase_auth_mocks/firebase_auth_mocks.dart' as auth_mocks;
 
 import 'video_service_test.mocks.dart';
 
 @GenerateMocks([
   FirebaseStorage,
-  FirebaseAuth,
-  User,
   VideoRepository,
   VideoValidationService,
   Reference,
   UploadTask,
-  TaskSnapshot
+  TaskSnapshot,
+  FirebaseFunctions,
+  HttpsCallable,
+  HttpsCallableResult
 ])
 void main() {
   late MockFirebaseStorage mockStorage;
-  late MockFirebaseAuth mockAuth;
-  late MockUser mockUser;
+  late auth_mocks.MockFirebaseAuth mockAuth;
+  late auth_mocks.MockUser mockUser;
   late MockVideoRepository mockVideoRepository;
   late MockVideoValidationService mockValidationService;
+  late MockFirebaseFunctions mockFunctions;
+  late MockHttpsCallable mockCallable;
+  late MockHttpsCallableResult mockCallableResult;
   late VideoService videoService;
   late DateTime now;
   late File testVideoFile;
@@ -39,11 +45,23 @@ void main() {
   late StreamController<TaskSnapshot> snapshotStreamController;
 
   setUp(() {
+    // Create a mock user
+    mockUser = auth_mocks.MockUser(
+      uid: 'test-user-id',
+      email: 'test@example.com',
+      displayName: 'Test User',
+      photoURL: 'https://example.com/photo.jpg'
+    );
+    
+    // Initialize mock auth with signed in user
+    mockAuth = auth_mocks.MockFirebaseAuth(signedIn: true, mockUser: mockUser);
+    
     mockStorage = MockFirebaseStorage();
-    mockAuth = MockFirebaseAuth();
-    mockUser = MockUser();
     mockVideoRepository = MockVideoRepository();
     mockValidationService = MockVideoValidationService();
+    mockFunctions = MockFirebaseFunctions();
+    mockCallable = MockHttpsCallable();
+    mockCallableResult = MockHttpsCallableResult();
     mockStorageRef = MockReference();
     mockUploadTask = MockUploadTask();
     mockTaskSnapshot = MockTaskSnapshot();
@@ -52,11 +70,21 @@ void main() {
     now = DateTime.now();
     testVideoFile = File(path.join('test', 'fixtures', 'test.mp4'));
 
-    // Setup default mock behavior
-    when(mockAuth.currentUser).thenAnswer((_) => mockUser);
-    when(mockUser.uid).thenAnswer((_) => 'test-user-id');
-    when(mockUser.displayName).thenAnswer((_) => 'Test User');
-    when(mockUser.photoURL).thenAnswer((_) => 'https://example.com/photo.jpg');
+    // Setup Firebase Functions mock
+    when(mockFunctions.httpsCallable('validate_and_prepare_video'))
+        .thenReturn(mockCallable);
+    when(mockCallableResult.data).thenReturn({
+      'success': true,
+      'validationMetadata': {
+        'width': 1920,
+        'height': 1080,
+        'duration': 120.0,
+        'codec': 'h264',
+        'format': 'mp4',
+        'bitrate': 5000000,
+      }
+    });
+    when(mockCallable.call(any)).thenAnswer((_) => Future.value(mockCallableResult));
 
     // Setup storage mocks
     when(mockStorage.ref()).thenAnswer((_) => mockStorageRef);
@@ -136,7 +164,7 @@ void main() {
       storage: mockStorage,
       auth: mockAuth,
       videoRepository: mockVideoRepository,
-      validationService: mockValidationService,
+      functions: mockFunctions,
     );
   });
 
@@ -147,8 +175,14 @@ void main() {
 
   group('VideoService - Authentication Checks', () {
     test('uploadVideo should throw when user is not authenticated', () async {
-      // Arrange
-      when(mockAuth.currentUser).thenAnswer((_) => null);
+      // Arrange - Create a new auth instance with no signed in user
+      mockAuth = auth_mocks.MockFirebaseAuth(signedIn: false);
+      videoService = VideoService(
+        storage: mockStorage,
+        auth: mockAuth,
+        videoRepository: mockVideoRepository,
+        functions: mockFunctions,
+      );
 
       // Act & Assert
       expect(

@@ -52,3 +52,5 @@ doc/
 scripts/seed/service-account.json
 /scripts
 functions/service-account.json
+laser/
+.cursorrules

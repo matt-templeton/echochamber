@@ -4,12 +4,15 @@
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i8;
-import 'dart:io' as _i14;
-import 'dart:typed_data' as _i13;
+import 'dart:io' as _i16;
+import 'dart:typed_data' as _i15;
 
-import 'package:cloud_firestore/cloud_firestore.dart' as _i12;
-import 'package:echochamber/models/video_model.dart' as _i11;
-import 'package:echochamber/repositories/video_repository.dart' as _i10;
+import 'package:cloud_firestore/cloud_firestore.dart' as _i14;
+import 'package:cloud_functions/cloud_functions.dart' as _i10;
+import 'package:cloud_functions_platform_interface/cloud_functions_platform_interface.dart'
+    as _i9;
+import 'package:echochamber/models/video_model.dart' as _i13;
+import 'package:echochamber/repositories/video_repository.dart' as _i12;
 import 'package:echochamber/services/video_validation_service.dart' as _i6;
 import 'package:firebase_auth/firebase_auth.dart' as _i5;
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart'
@@ -19,7 +22,7 @@ import 'package:firebase_storage/firebase_storage.dart' as _i3;
 import 'package:firebase_storage_platform_interface/firebase_storage_platform_interface.dart'
     as _i7;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i9;
+import 'package:mockito/src/dummies.dart' as _i11;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -130,6 +133,30 @@ class _FakeFuture_17<T> extends _i1.SmartFake implements _i8.Future<T> {
     : super(parent, parentInvocation);
 }
 
+class _FakeFirebaseFunctionsPlatform_18 extends _i1.SmartFake
+    implements _i9.FirebaseFunctionsPlatform {
+  _FakeFirebaseFunctionsPlatform_18(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeHttpsCallable_19 extends _i1.SmartFake
+    implements _i10.HttpsCallable {
+  _FakeHttpsCallable_19(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeHttpsCallablePlatform_20 extends _i1.SmartFake
+    implements _i9.HttpsCallablePlatform {
+  _FakeHttpsCallablePlatform_20(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeHttpsCallableResult_21<T1> extends _i1.SmartFake
+    implements _i10.HttpsCallableResult<T1> {
+  _FakeHttpsCallableResult_21(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [FirebaseStorage].
 ///
 /// See the documentation for Mockito's code generation for more information.
@@ -156,7 +183,7 @@ class MockFirebaseStorage extends _i1.Mock implements _i3.FirebaseStorage {
   String get bucket =>
       (super.noSuchMethod(
             Invocation.getter(#bucket),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i11.dummyValue<String>(
               this,
               Invocation.getter(#bucket),
             ),
@@ -251,15 +278,6 @@ class MockFirebaseStorage extends _i1.Mock implements _i3.FirebaseStorage {
   );
 
   @override
-  _i8.Future<void> useEmulator({required String? host, required int? port}) =>
-      (super.noSuchMethod(
-            Invocation.method(#useEmulator, [], {#host: host, #port: port}),
-            returnValue: _i8.Future<void>.value(),
-            returnValueForMissingStub: _i8.Future<void>.value(),
-          )
-          as _i8.Future<void>);
-
-  @override
   _i8.Future<void> useStorageEmulator(
     String? host,
     int? port, {
@@ -318,15 +336,6 @@ class MockFirebaseAuth extends _i1.Mock implements _i5.FirebaseAuth {
             returnValue: <dynamic, dynamic>{},
           )
           as Map<dynamic, dynamic>);
-
-  @override
-  _i8.Future<void> useEmulator(String? origin) =>
-      (super.noSuchMethod(
-            Invocation.method(#useEmulator, [origin]),
-            returnValue: _i8.Future<void>.value(),
-            returnValueForMissingStub: _i8.Future<void>.value(),
-          )
-          as _i8.Future<void>);
 
   @override
   _i8.Future<void> useAuthEmulator(
@@ -613,21 +622,6 @@ class MockFirebaseAuth extends _i1.Mock implements _i5.FirebaseAuth {
           as _i8.Future<_i5.UserCredential>);
 
   @override
-  _i8.Future<_i5.UserCredential> signInWithAuthProvider(
-    _i4.AuthProvider? provider,
-  ) =>
-      (super.noSuchMethod(
-            Invocation.method(#signInWithAuthProvider, [provider]),
-            returnValue: _i8.Future<_i5.UserCredential>.value(
-              _FakeUserCredential_4(
-                this,
-                Invocation.method(#signInWithAuthProvider, [provider]),
-              ),
-            ),
-          )
-          as _i8.Future<_i5.UserCredential>);
-
-  @override
   _i8.Future<_i5.UserCredential> signInWithProvider(
     _i4.AuthProvider? provider,
   ) =>
@@ -697,7 +691,7 @@ class MockFirebaseAuth extends _i1.Mock implements _i5.FirebaseAuth {
       (super.noSuchMethod(
             Invocation.method(#verifyPasswordResetCode, [code]),
             returnValue: _i8.Future<String>.value(
-              _i9.dummyValue<String>(
+              _i11.dummyValue<String>(
                 this,
                 Invocation.method(#verifyPasswordResetCode, [code]),
               ),
@@ -791,7 +785,7 @@ class MockUser extends _i1.Mock implements _i5.User {
   String get uid =>
       (super.noSuchMethod(
             Invocation.getter(#uid),
-            returnValue: _i9.dummyValue<String>(this, Invocation.getter(#uid)),
+            returnValue: _i11.dummyValue<String>(this, Invocation.getter(#uid)),
           )
           as String);
 
@@ -1069,13 +1063,13 @@ class MockUser extends _i1.Mock implements _i5.User {
 /// A class which mocks [VideoRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockVideoRepository extends _i1.Mock implements _i10.VideoRepository {
+class MockVideoRepository extends _i1.Mock implements _i12.VideoRepository {
   MockVideoRepository() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i8.Future<void> createVideo(_i11.Video? video) =>
+  _i8.Future<void> createVideo(_i13.Video? video) =>
       (super.noSuchMethod(
             Invocation.method(#createVideo, [video]),
             returnValue: _i8.Future<void>.value(),
@@ -1084,36 +1078,36 @@ class MockVideoRepository extends _i1.Mock implements _i10.VideoRepository {
           as _i8.Future<void>);
 
   @override
-  _i8.Future<_i11.Video?> getVideoById(String? videoId) =>
+  _i8.Future<_i13.Video?> getVideoById(String? videoId) =>
       (super.noSuchMethod(
             Invocation.method(#getVideoById, [videoId]),
-            returnValue: _i8.Future<_i11.Video?>.value(),
+            returnValue: _i8.Future<_i13.Video?>.value(),
           )
-          as _i8.Future<_i11.Video?>);
+          as _i8.Future<_i13.Video?>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getUserVideos(String? userId) =>
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getUserVideos(String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#getUserVideos, [userId]),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getVideosByGenre(String? genre) =>
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getVideosByGenre(String? genre) =>
       (super.noSuchMethod(
             Invocation.method(#getVideosByGenre, [genre]),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getVideosByTag(String? tag) =>
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getVideosByTag(String? tag) =>
       (super.noSuchMethod(
             Invocation.method(#getVideosByTag, [tag]),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 
   @override
   _i8.Future<void> updateVideo(String? videoId, Map<String, dynamic>? data) =>
@@ -1169,36 +1163,36 @@ class MockVideoRepository extends _i1.Mock implements _i10.VideoRepository {
           as _i8.Future<bool>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getTrendingVideos({
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getTrendingVideos({
     int? limit = 10,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#getTrendingVideos, [], {#limit: limit}),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getFeedVideos({
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getFeedVideos({
     int? limit = 10,
-    _i12.DocumentSnapshot<Object?>? startAfter,
+    _i14.DocumentSnapshot<Object?>? startAfter,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#getFeedVideos, [], {
               #limit: limit,
               #startAfter: startAfter,
             }),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getUserLikedVideos(String? userId) =>
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getUserLikedVideos(String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#getUserLikedVideos, [userId]),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 
   @override
   _i8.Future<void> addComment(
@@ -1214,12 +1208,12 @@ class MockVideoRepository extends _i1.Mock implements _i10.VideoRepository {
           as _i8.Future<void>);
 
   @override
-  _i8.Stream<_i12.QuerySnapshot<Object?>> getVideoComments(String? videoId) =>
+  _i8.Stream<_i14.QuerySnapshot<Object?>> getVideoComments(String? videoId) =>
       (super.noSuchMethod(
             Invocation.method(#getVideoComments, [videoId]),
-            returnValue: _i8.Stream<_i12.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i8.Stream<_i14.QuerySnapshot<Object?>>.empty(),
           )
-          as _i8.Stream<_i12.QuerySnapshot<Object?>>);
+          as _i8.Stream<_i14.QuerySnapshot<Object?>>);
 }
 
 /// A class which mocks [VideoValidationService].
@@ -1268,7 +1262,7 @@ class MockReference extends _i1.Mock implements _i3.Reference {
   String get bucket =>
       (super.noSuchMethod(
             Invocation.getter(#bucket),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i11.dummyValue<String>(
               this,
               Invocation.getter(#bucket),
             ),
@@ -1279,7 +1273,7 @@ class MockReference extends _i1.Mock implements _i3.Reference {
   String get fullPath =>
       (super.noSuchMethod(
             Invocation.getter(#fullPath),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i11.dummyValue<String>(
               this,
               Invocation.getter(#fullPath),
             ),
@@ -1290,7 +1284,10 @@ class MockReference extends _i1.Mock implements _i3.Reference {
   String get name =>
       (super.noSuchMethod(
             Invocation.getter(#name),
-            returnValue: _i9.dummyValue<String>(this, Invocation.getter(#name)),
+            returnValue: _i11.dummyValue<String>(
+              this,
+              Invocation.getter(#name),
+            ),
           )
           as String);
 
@@ -1327,7 +1324,7 @@ class MockReference extends _i1.Mock implements _i3.Reference {
       (super.noSuchMethod(
             Invocation.method(#getDownloadURL, []),
             returnValue: _i8.Future<String>.value(
-              _i9.dummyValue<String>(
+              _i11.dummyValue<String>(
                 this,
                 Invocation.method(#getDownloadURL, []),
               ),
@@ -1366,16 +1363,16 @@ class MockReference extends _i1.Mock implements _i3.Reference {
           as _i8.Future<_i3.ListResult>);
 
   @override
-  _i8.Future<_i13.Uint8List?> getData([int? maxSize = 10485760]) =>
+  _i8.Future<_i15.Uint8List?> getData([int? maxSize = 10485760]) =>
       (super.noSuchMethod(
             Invocation.method(#getData, [maxSize]),
-            returnValue: _i8.Future<_i13.Uint8List?>.value(),
+            returnValue: _i8.Future<_i15.Uint8List?>.value(),
           )
-          as _i8.Future<_i13.Uint8List?>);
+          as _i8.Future<_i15.Uint8List?>);
 
   @override
   _i3.UploadTask putData(
-    _i13.Uint8List? data, [
+    _i15.Uint8List? data, [
     _i7.SettableMetadata? metadata,
   ]) =>
       (super.noSuchMethod(
@@ -1399,7 +1396,7 @@ class MockReference extends _i1.Mock implements _i3.Reference {
           as _i3.UploadTask);
 
   @override
-  _i3.UploadTask putFile(_i14.File? file, [_i7.SettableMetadata? metadata]) =>
+  _i3.UploadTask putFile(_i16.File? file, [_i7.SettableMetadata? metadata]) =>
       (super.noSuchMethod(
             Invocation.method(#putFile, [file, metadata]),
             returnValue: _FakeUploadTask_14(
@@ -1446,7 +1443,7 @@ class MockReference extends _i1.Mock implements _i3.Reference {
           as _i8.Future<_i7.FullMetadata>);
 
   @override
-  _i3.DownloadTask writeToFile(_i14.File? file) =>
+  _i3.DownloadTask writeToFile(_i16.File? file) =>
       (super.noSuchMethod(
             Invocation.method(#writeToFile, [file]),
             returnValue: _FakeDownloadTask_15(
@@ -1551,8 +1548,8 @@ class MockUploadTask extends _i1.Mock implements _i3.UploadTask {
       (super.noSuchMethod(
             Invocation.method(#then, [onValue], {#onError: onError}),
             returnValue:
-                _i9.ifNotNull(
-                  _i9.dummyValueOrNull<S>(
+                _i11.ifNotNull(
+                  _i11.dummyValueOrNull<S>(
                     this,
                     Invocation.method(#then, [onValue], {#onError: onError}),
                   ),
@@ -1645,4 +1642,163 @@ class MockTaskSnapshot extends _i1.Mock implements _i3.TaskSnapshot {
   int get totalBytes =>
       (super.noSuchMethod(Invocation.getter(#totalBytes), returnValue: 0)
           as int);
+}
+
+/// A class which mocks [FirebaseFunctions].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockFirebaseFunctions extends _i1.Mock implements _i10.FirebaseFunctions {
+  MockFirebaseFunctions() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i2.FirebaseApp get app =>
+      (super.noSuchMethod(
+            Invocation.getter(#app),
+            returnValue: _FakeFirebaseApp_0(this, Invocation.getter(#app)),
+          )
+          as _i2.FirebaseApp);
+
+  @override
+  _i9.FirebaseFunctionsPlatform get delegate =>
+      (super.noSuchMethod(
+            Invocation.getter(#delegate),
+            returnValue: _FakeFirebaseFunctionsPlatform_18(
+              this,
+              Invocation.getter(#delegate),
+            ),
+          )
+          as _i9.FirebaseFunctionsPlatform);
+
+  @override
+  Map<dynamic, dynamic> get pluginConstants =>
+      (super.noSuchMethod(
+            Invocation.getter(#pluginConstants),
+            returnValue: <dynamic, dynamic>{},
+          )
+          as Map<dynamic, dynamic>);
+
+  @override
+  _i10.HttpsCallable httpsCallable(
+    String? name, {
+    _i9.HttpsCallableOptions? options,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#httpsCallable, [name], {#options: options}),
+            returnValue: _FakeHttpsCallable_19(
+              this,
+              Invocation.method(#httpsCallable, [name], {#options: options}),
+            ),
+          )
+          as _i10.HttpsCallable);
+
+  @override
+  _i10.HttpsCallable httpsCallableFromUrl(
+    String? url, {
+    _i9.HttpsCallableOptions? options,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #httpsCallableFromUrl,
+              [url],
+              {#options: options},
+            ),
+            returnValue: _FakeHttpsCallable_19(
+              this,
+              Invocation.method(
+                #httpsCallableFromUrl,
+                [url],
+                {#options: options},
+              ),
+            ),
+          )
+          as _i10.HttpsCallable);
+
+  @override
+  _i10.HttpsCallable httpsCallableFromUri(
+    Uri? uri, {
+    _i9.HttpsCallableOptions? options,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #httpsCallableFromUri,
+              [uri],
+              {#options: options},
+            ),
+            returnValue: _FakeHttpsCallable_19(
+              this,
+              Invocation.method(
+                #httpsCallableFromUri,
+                [uri],
+                {#options: options},
+              ),
+            ),
+          )
+          as _i10.HttpsCallable);
+
+  @override
+  void useFunctionsEmulator(
+    String? host,
+    int? port, {
+    bool? automaticHostMapping = true,
+  }) => super.noSuchMethod(
+    Invocation.method(
+      #useFunctionsEmulator,
+      [host, port],
+      {#automaticHostMapping: automaticHostMapping},
+    ),
+    returnValueForMissingStub: null,
+  );
+}
+
+/// A class which mocks [HttpsCallable].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockHttpsCallable extends _i1.Mock implements _i10.HttpsCallable {
+  MockHttpsCallable() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i9.HttpsCallablePlatform get delegate =>
+      (super.noSuchMethod(
+            Invocation.getter(#delegate),
+            returnValue: _FakeHttpsCallablePlatform_20(
+              this,
+              Invocation.getter(#delegate),
+            ),
+          )
+          as _i9.HttpsCallablePlatform);
+
+  @override
+  _i8.Future<_i10.HttpsCallableResult<T>> call<T>([dynamic parameters]) =>
+      (super.noSuchMethod(
+            Invocation.method(#call, [parameters]),
+            returnValue: _i8.Future<_i10.HttpsCallableResult<T>>.value(
+              _FakeHttpsCallableResult_21<T>(
+                this,
+                Invocation.method(#call, [parameters]),
+              ),
+            ),
+          )
+          as _i8.Future<_i10.HttpsCallableResult<T>>);
+}
+
+/// A class which mocks [HttpsCallableResult].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockHttpsCallableResult<T> extends _i1.Mock
+    implements _i10.HttpsCallableResult<T> {
+  MockHttpsCallableResult() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  T get data =>
+      (super.noSuchMethod(
+            Invocation.getter(#data),
+            returnValue: _i11.dummyValue<T>(this, Invocation.getter(#data)),
+          )
+          as T);
 }

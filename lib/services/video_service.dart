@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_functions/firebase_functions.dart';
 import 'package:path/path.dart' as path;
 import '../repositories/video_repository.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/video_model.dart';
 import 'video_validation_service.dart';
 
