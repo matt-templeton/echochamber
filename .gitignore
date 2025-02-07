@@ -51,3 +51,4 @@ doc/
 # Firebase service account
 scripts/seed/service-account.json
 /scripts
+functions/service-account.json

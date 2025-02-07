@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_functions/firebase_functions.dart';
 import 'package:path/path.dart' as path;
 import '../repositories/video_repository.dart';
 import '../models/video_model.dart';
@@ -10,17 +11,17 @@ class VideoService {
   final FirebaseStorage _storage;
   final FirebaseAuth _auth;
   final VideoRepository _videoRepository;
-  final VideoValidationService _validationService;
+  final FirebaseFunctions _functions;
 
   VideoService({
     FirebaseStorage? storage,
     FirebaseAuth? auth,
     VideoRepository? videoRepository,
-    VideoValidationService? validationService,
+    FirebaseFunctions? functions,
   })  : _storage = storage ?? FirebaseStorage.instance,
         _auth = auth ?? FirebaseAuth.instance,
         _videoRepository = videoRepository ?? VideoRepository(),
-        _validationService = validationService ?? VideoValidationService();
+        _functions = functions ?? FirebaseFunctions.instance;
 
   Future<Video> uploadVideo({
     required File videoFile,
@@ -74,21 +75,8 @@ class VideoService {
     await _videoRepository.createVideo(video);
 
     try {
-      // Validate video
-      final validationResult = await _validationService.validateVideo(videoFile.path);
-      
-      if (!validationResult.isValid) {
-        // Update video document with validation errors
-        await _videoRepository.updateVideo(videoId, {
-          'processingStatus': VideoProcessingStatus.failed.toString().split('.').last,
-          'processingError': VideoProcessingError.invalid_format.toString().split('.').last,
-          'validationErrors': validationResult.errors,
-        });
-        throw Exception('Video validation failed: ${validationResult.errors.join(", ")}');
-      }
-
       // Create the storage path following the structure from documentation
-      final videoPath = 'videos/${user.uid}/$videoId/original${path.extension(videoFile.path)}';
+      final videoPath = 'videos/${user.uid}/$videoId/openshot/original.mp4';
       final storageRef = _storage.ref().child(videoPath);
 
       // Start the upload task
@@ -114,21 +102,40 @@ class VideoService {
 
       // Wait for the upload to complete
       final snapshot = await uploadTask;
-      
-      // Get the download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
-      // Update video document with validation metadata and download URL
-      final updatedVideo = video.copyWith(
-        videoUrl: downloadUrl,
-        duration: validationResult.metadata?.duration?.toInt() ?? 0,
-        processingStatus: VideoProcessingStatus.pending,
-        validationMetadata: validationResult.metadata,
-      );
+      // Call the Cloud Function to validate and prepare video
+      try {
+        final result = await _functions.httpsCallable('validate_and_prepare_video').call({
+          'videoId': videoId,
+          'userId': user.uid,
+          'title': title,
+          'description': description,
+        });
 
-      await _videoRepository.updateVideo(videoId, updatedVideo.toFirestore());
-      
-      return updatedVideo;
+        // Update video document with validation results
+        final validationData = result.data;
+        final updatedVideo = video.copyWith(
+          videoUrl: downloadUrl,
+          processingStatus: VideoProcessingStatus.pending,
+          validationMetadata: VideoValidationMetadata(
+            width: validationData['validationMetadata']['width'],
+            height: validationData['validationMetadata']['height'],
+            duration: validationData['validationMetadata']['duration'],
+            codec: validationData['validationMetadata']['codec'],
+            format: validationData['validationMetadata']['format'],
+            bitrate: validationData['validationMetadata']['bitrate'],
+          ),
+        );
+
+        await _videoRepository.updateVideo(videoId, updatedVideo.toFirestore());
+        return updatedVideo;
+
+      } catch (e) {
+        // Cloud Function will handle updating the error status in Firestore
+        throw Exception('Failed to validate video: $e');
+      }
+
     } catch (e) {
       // Update video document with error status
       await _videoRepository.updateVideo(videoId, {

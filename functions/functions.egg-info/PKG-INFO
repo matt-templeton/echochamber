@@ -1,0 +1,7 @@
+Metadata-Version: 2.2
+Name: functions
+Version: 0.1
+Requires-Dist: firebase-functions
+Requires-Dist: pytest
+Requires-Dist: requests
+Dynamic: requires-dist

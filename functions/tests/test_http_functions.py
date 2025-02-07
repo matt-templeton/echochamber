@@ -1,12 +1,13 @@
 import json
 import pytest
 from firebase_functions import https_fn
-from ..main import baseline_function
+from spec.health_check import health_check
+
 
 def test_test_function_success(mock_request):
     """Test that test_function returns expected success response."""
     # Call the function
-    response = baseline_function(mock_request)
+    response = health_check(mock_request)
     
     # Parse response
     response_data = json.loads(response.data)
@@ -20,7 +21,7 @@ def test_test_function_success(mock_request):
 
 def test_test_function_response_format(mock_request):
     """Test that test_function response follows expected format."""
-    response = baseline_function(mock_request)
+    response = health_check(mock_request)
     response_data = json.loads(response.data)
     
     # Check response structure
@@ -29,6 +30,6 @@ def test_test_function_response_format(mock_request):
 
 def test_basic_function_call(mock_request):
     """Test the basic function call works."""
-    response = baseline_function(mock_request)
+    response = health_check(mock_request)
     assert response.status_code == 200  # Assert instead of returning
     assert response.headers.get('Content-Type') == 'application/json'

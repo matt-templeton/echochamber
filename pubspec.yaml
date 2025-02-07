@@ -20,6 +20,7 @@ dependencies:
   firebase_messaging: ^14.7.9
   firebase_admin: ^0.2.0
   firebase_analytics: ^10.7.4
+  # firebase_functions: ^4.4.0
   
   # State Management
   provider: ^6.1.1
