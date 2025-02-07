@@ -5,7 +5,6 @@ import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:path/path.dart' as path;
 import 'package:echochamber/services/video_service.dart';
 import 'package:echochamber/services/video_validation_service.dart';
@@ -22,9 +21,6 @@ import 'video_service_test.mocks.dart';
   Reference,
   UploadTask,
   TaskSnapshot,
-  FirebaseFunctions,
-  HttpsCallable,
-  HttpsCallableResult
 ])
 void main() {
   late MockFirebaseStorage mockStorage;
@@ -32,9 +28,6 @@ void main() {
   late auth_mocks.MockUser mockUser;
   late MockVideoRepository mockVideoRepository;
   late MockVideoValidationService mockValidationService;
-  late MockFirebaseFunctions mockFunctions;
-  late MockHttpsCallable mockCallable;
-  late MockHttpsCallableResult mockCallableResult;
   late VideoService videoService;
   late DateTime now;
   late File testVideoFile;
@@ -59,9 +52,6 @@ void main() {
     mockStorage = MockFirebaseStorage();
     mockVideoRepository = MockVideoRepository();
     mockValidationService = MockVideoValidationService();
-    mockFunctions = MockFirebaseFunctions();
-    mockCallable = MockHttpsCallable();
-    mockCallableResult = MockHttpsCallableResult();
     mockStorageRef = MockReference();
     mockUploadTask = MockUploadTask();
     mockTaskSnapshot = MockTaskSnapshot();
@@ -69,22 +59,6 @@ void main() {
     snapshotStreamController = StreamController<TaskSnapshot>.broadcast();
     now = DateTime.now();
     testVideoFile = File(path.join('test', 'fixtures', 'test.mp4'));
-
-    // Setup Firebase Functions mock
-    when(mockFunctions.httpsCallable('validate_and_prepare_video'))
-        .thenReturn(mockCallable);
-    when(mockCallableResult.data).thenReturn({
-      'success': true,
-      'validationMetadata': {
-        'width': 1920,
-        'height': 1080,
-        'duration': 120.0,
-        'codec': 'h264',
-        'format': 'mp4',
-        'bitrate': 5000000,
-      }
-    });
-    when(mockCallable.call(any)).thenAnswer((_) => Future.value(mockCallableResult));
 
     // Setup storage mocks
     when(mockStorage.ref()).thenAnswer((_) => mockStorageRef);
@@ -98,46 +72,8 @@ void main() {
     when(mockUploadTask.snapshot).thenAnswer((_) => mockTaskSnapshot);
 
     // Setup upload task mocks with coordinated streams
-    final uploadCompleter = Completer<TaskSnapshot>();
-    
-    // Setup snapshot events stream
     when(mockUploadTask.snapshotEvents).thenAnswer((_) => snapshotStreamController.stream);
-    
-    // Setup upload task completion
-    when(mockUploadTask.then(any, onError: anyNamed('onError')))
-        .thenAnswer((invocation) => uploadCompleter.future.then(
-          (snapshot) => (invocation.positionalArguments[0] as Function)(snapshot)
-        ));
-    
-    when(mockUploadTask.asStream())
-        .thenAnswer((_) => uploadStreamController.stream);
-
-    // When either stream completes with a snapshot, complete the upload
-    uploadStreamController.stream.listen(
-      (snapshot) {
-        if (!uploadCompleter.isCompleted) {
-          uploadCompleter.complete(snapshot);
-        }
-      },
-      onDone: () {
-        if (!uploadCompleter.isCompleted) {
-          uploadCompleter.complete(mockTaskSnapshot);
-        }
-      },
-    );
-
-    snapshotStreamController.stream.listen(
-      (snapshot) {
-        if (!uploadCompleter.isCompleted) {
-          uploadCompleter.complete(snapshot);
-        }
-      },
-      onDone: () {
-        if (!uploadCompleter.isCompleted) {
-          uploadCompleter.complete(mockTaskSnapshot);
-        }
-      },
-    );
+    when(mockUploadTask.asStream()).thenAnswer((_) => uploadStreamController.stream);
 
     // Setup validation result
     final validationResult = VideoValidationResult(
@@ -164,7 +100,7 @@ void main() {
       storage: mockStorage,
       auth: mockAuth,
       videoRepository: mockVideoRepository,
-      functions: mockFunctions,
+      validationService: mockValidationService,
     );
   });
 
@@ -181,7 +117,7 @@ void main() {
         storage: mockStorage,
         auth: mockAuth,
         videoRepository: mockVideoRepository,
-        functions: mockFunctions,
+        validationService: mockValidationService,
       );
 
       // Act & Assert
