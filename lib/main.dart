@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'screens/home/home_screen.dart';
 import 'services/firebase_service.dart';
+import 'providers/video_feed_provider.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -31,6 +32,9 @@ class MyApp extends StatelessWidget {
         StreamProvider<User?>(
           create: (context) => context.read<AuthService>().authStateChanges,
           initialData: null,
+        ),
+        ChangeNotifierProvider(
+          create: (_) => VideoFeedProvider(),
         ),
       ],
       child: MaterialApp(

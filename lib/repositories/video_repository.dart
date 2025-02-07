@@ -10,13 +10,24 @@ class VideoRepository {
 
   // Create a new video document
   Future<void> createVideo(Video video) async {
-    await _firestore.collection(_collection).doc(video.id).set(video.toFirestore());
+    final videoDoc = video.toFirestore();
+    
+    // Ensure HLS-specific fields are present
+    assert(video.validationMetadata?.format == 'hls', 'Video format must be HLS');
+    assert(video.hlsBasePath != null, 'HLS base path must be provided');
+    assert(video.validationMetadata?.variants != null, 'Video variants must be provided');
+    
+    await _firestore.collection(_collection).doc(video.id).set(videoDoc);
   }
 
   // Get a video by ID
   Future<Video?> getVideoById(String videoId) async {
-    final doc = await _firestore.collection(_collection).doc(videoId).get();
-    return doc.exists ? Video.fromFirestore(doc) : null;
+    try {
+      final doc = await _firestore.collection(_collection).doc(videoId).get();
+      return doc.exists ? Video.fromFirestore(doc) : null;
+    } catch (e) {
+      rethrow;
+    }
   }
 
   // Get videos for a user
@@ -143,6 +154,7 @@ class VideoRepository {
     int limit = 10,
     DocumentSnapshot? startAfter,
   }) {
+    print('getFeedVideos called with limit: $limit, startAfter: ${startAfter?.id}');
     var query = _firestore
         .collection(_collection)
         .orderBy('uploadedAt', descending: true)
@@ -153,6 +165,24 @@ class VideoRepository {
     }
 
     return query.snapshots();
+  }
+
+  // Get a single video for feed
+  Future<QuerySnapshot> getNextFeedVideo({DocumentSnapshot? startAfter}) async {
+    try {
+      var query = _firestore
+          .collection(_collection)
+          .orderBy('uploadedAt', descending: true)
+          .limit(1);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      return await query.get();
+    } catch (e) {
+      rethrow;
+    }
   }
 
   // Get user's liked videos
@@ -198,5 +228,64 @@ class VideoRepository {
         .collection('comments')
         .orderBy('createdAt', descending: true)
         .snapshots();
+  }
+
+  // Get video quality variants
+  Future<List<VideoQualityVariant>?> getVideoVariants(String videoId) async {
+    try {
+      final doc = await _firestore.collection(_collection).doc(videoId).get();
+      if (!doc.exists) return null;
+
+      final data = doc.data();
+      if (data == null || !data.containsKey('validationMetadata')) return null;
+
+      final metadata = VideoValidationMetadata.fromMap(
+        data['validationMetadata'] as Map<String, dynamic>
+      );
+      return metadata.variants;
+    } catch (e) {
+      print('Error getting video variants: $e');
+      return null;
+    }
+  }
+
+  // Get video URL for specific quality
+  Future<String?> getVideoUrlForQuality(String videoId, String quality) async {
+    try {
+      final variants = await getVideoVariants(videoId);
+      if (variants == null) return null;
+
+      final variant = variants.firstWhere(
+        (v) => v.quality == quality,
+        orElse: () => variants.first,
+      );
+      return variant.playlistUrl;
+    } catch (e) {
+      print('Error getting video URL for quality: $e');
+      return null;
+    }
+  }
+
+  // Get best quality URL based on bandwidth
+  Future<String?> getAdaptiveVideoUrl(String videoId, int bandwidthBps) async {
+    try {
+      final variants = await getVideoVariants(videoId);
+      if (variants == null || variants.isEmpty) {
+        // Fall back to master playlist
+        final doc = await _firestore.collection(_collection).doc(videoId).get();
+        if (!doc.exists) return null;
+        final data = doc.data();
+        if (data == null) return null;
+        return data['videoUrl'] as String?;
+      }
+
+      final variant = variants
+          .where((v) => v.bitrate <= bandwidthBps)
+          .reduce((a, b) => a.bitrate > b.bitrate ? a : b);
+      return variant.playlistUrl;
+    } catch (e) {
+      print('Error getting adaptive video URL: $e');
+      return null;
+    }
   }
 } 

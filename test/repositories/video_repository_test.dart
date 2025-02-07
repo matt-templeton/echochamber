@@ -21,7 +21,8 @@ void main() {
       title: 'Test Video',
       description: 'Test Description',
       duration: 120,
-      videoUrl: 'https://example.com/video.mp4',
+      videoUrl: 'https://example.com/master.m3u8',
+      hlsBasePath: 'videos/test-video-id',
       thumbnailUrl: 'https://example.com/thumbnail.jpg',
       uploadedAt: now,
       lastModified: now,
@@ -55,8 +56,24 @@ void main() {
         height: 1080,
         duration: 120.0,
         codec: 'h264',
-        format: 'mp4',
-        bitrate: 5000000,
+        format: 'hls',
+        variants: [
+          VideoQualityVariant(
+            quality: '1080p',
+            bitrate: 5000000,
+            playlistUrl: 'https://example.com/hls/1080p.m3u8'
+          ),
+          VideoQualityVariant(
+            quality: '720p',
+            bitrate: 2800000,
+            playlistUrl: 'https://example.com/hls/720p.m3u8'
+          ),
+          VideoQualityVariant(
+            quality: '480p',
+            bitrate: 1400000,
+            playlistUrl: 'https://example.com/hls/480p.m3u8'
+          )
+        ]
       ),
       subtitles: [
         VideoSubtitle(
@@ -133,7 +150,11 @@ void main() {
       expect(validationMetadata['duration'], testVideo.validationMetadata?.duration);
       expect(validationMetadata['codec'], testVideo.validationMetadata?.codec);
       expect(validationMetadata['format'], testVideo.validationMetadata?.format);
-      expect(validationMetadata['bitrate'], testVideo.validationMetadata?.bitrate);
+      expect(validationMetadata['variants'], isNotNull);
+      expect(validationMetadata['variants'], hasLength(3));
+      expect(validationMetadata['variants'][0]['quality'], '1080p');
+      expect(validationMetadata['variants'][0]['bitrate'], 5000000);
+      expect(validationMetadata['variants'][0]['playlistUrl'], 'https://example.com/hls/1080p.m3u8');
       
       // Verify counters start at 0
       expect(data['likesCount'], 0);
@@ -193,7 +214,8 @@ void main() {
       title: 'Test Video',
       description: 'Test Description',
       duration: 120,
-      videoUrl: 'https://example.com/video.mp4',
+      videoUrl: 'https://example.com/master.m3u8',
+      hlsBasePath: 'videos/test_video_id',
       thumbnailUrl: 'https://example.com/thumbnail.jpg',
       uploadedAt: DateTime.now(),
       lastModified: DateTime.now(),
@@ -207,6 +229,20 @@ void main() {
         'owner': 'Test User',
         'license': 'CC BY',
       },
+      validationMetadata: VideoValidationMetadata(
+        width: 1920,
+        height: 1080,
+        duration: 120.0,
+        codec: 'h264',
+        format: 'hls',
+        variants: [
+          VideoQualityVariant(
+            quality: '1080p',
+            bitrate: 5000000,
+            playlistUrl: 'https://example.com/hls/1080p.m3u8'
+          )
+        ]
+      ),
     );
 
     test('createVideo successfully creates a video document', () async {
@@ -519,7 +555,8 @@ void main() {
         title: 'Minimal Video',
         description: 'Minimal Description',
         duration: 60,
-        videoUrl: 'https://example.com/minimal.mp4',
+        videoUrl: 'https://example.com/master.m3u8',
+        hlsBasePath: 'videos/minimal-video',
         thumbnailUrl: 'https://example.com/minimal.jpg',
         uploadedAt: now,
         lastModified: now,
@@ -531,6 +568,20 @@ void main() {
           'status': 'pending',
           'owner': 'Test Author',
         },
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 60.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
       );
       await videoRepository.createVideo(minimalVideo);
 
@@ -544,10 +595,15 @@ void main() {
       expect(result?.timestamps, isEmpty);
       expect(result?.credits, isEmpty);
       expect(result?.subtitles, isNull);
-      expect(result?.validationMetadata, isNull);
       expect(result?.validationErrors, isNull);
       expect(result?.scheduledPublishTime, isNull);
       expect(result?.duetVideoId, isNull);
+      
+      // Verify required HLS fields are present
+      expect(result?.validationMetadata?.format, 'hls');
+      expect(result?.validationMetadata?.variants, isNotNull);
+      expect(result?.validationMetadata?.variants?.length, 1);
+      expect(result?.hlsBasePath, isNotNull);
     });
   });
 } 

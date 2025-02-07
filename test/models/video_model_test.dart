@@ -266,8 +266,19 @@ void main() {
           'height': 1080,
           'duration': 180.5,
           'codec': 'h264',
-          'format': 'mp4',
-          'bitrate': 5000000,
+          'format': 'hls',
+          'variants': [
+            {
+              'quality': '1080p',
+              'bitrate': 5000000,
+              'playlistUrl': 'https://example.com/hls/1080p.m3u8'
+            },
+            {
+              'quality': '720p',
+              'bitrate': 2800000,
+              'playlistUrl': 'https://example.com/hls/720p.m3u8'
+            }
+          ]
         },
       };
       final doc = MockDocumentSnapshot(id: 'test-video-id', data: metadataData);
@@ -281,8 +292,11 @@ void main() {
       expect(video.validationMetadata?.height, 1080);
       expect(video.validationMetadata?.duration, 180.5);
       expect(video.validationMetadata?.codec, 'h264');
-      expect(video.validationMetadata?.format, 'mp4');
-      expect(video.validationMetadata?.bitrate, 5000000);
+      expect(video.validationMetadata?.format, 'hls');
+      expect(video.validationMetadata?.variants, hasLength(2));
+      expect(video.validationMetadata?.variants?[0].quality, '1080p');
+      expect(video.validationMetadata?.variants?[0].bitrate, 5000000);
+      expect(video.validationMetadata?.variants?[0].playlistUrl, 'https://example.com/hls/1080p.m3u8');
     });
 
     test('should correctly convert validation metadata to Firestore', () {
@@ -292,8 +306,19 @@ void main() {
         height: 1080,
         duration: 180.5,
         codec: 'h264',
-        format: 'mp4',
-        bitrate: 5000000,
+        format: 'hls',
+        variants: [
+          VideoQualityVariant(
+            quality: '1080p',
+            bitrate: 5000000,
+            playlistUrl: 'https://example.com/hls/1080p.m3u8'
+          ),
+          VideoQualityVariant(
+            quality: '720p',
+            bitrate: 2800000,
+            playlistUrl: 'https://example.com/hls/720p.m3u8'
+          )
+        ]
       );
       
       final video = Video(
@@ -320,8 +345,11 @@ void main() {
       expect(firestoreData['validationMetadata']['height'], 1080);
       expect(firestoreData['validationMetadata']['duration'], 180.5);
       expect(firestoreData['validationMetadata']['codec'], 'h264');
-      expect(firestoreData['validationMetadata']['format'], 'mp4');
-      expect(firestoreData['validationMetadata']['bitrate'], 5000000);
+      expect(firestoreData['validationMetadata']['format'], 'hls');
+      expect(firestoreData['validationMetadata']['variants'], hasLength(2));
+      expect(firestoreData['validationMetadata']['variants'][0]['quality'], '1080p');
+      expect(firestoreData['validationMetadata']['variants'][0]['bitrate'], 5000000);
+      expect(firestoreData['validationMetadata']['variants'][0]['playlistUrl'], 'https://example.com/hls/1080p.m3u8');
     });
 
     test('should handle partial validation metadata', () {
@@ -346,7 +374,7 @@ void main() {
       expect(video.validationMetadata?.duration, isNull);
       expect(video.validationMetadata?.codec, isNull);
       expect(video.validationMetadata?.format, isNull);
-      expect(video.validationMetadata?.bitrate, isNull);
+      expect(video.validationMetadata?.variants, isNull);
     });
 
     test('should handle social metadata updates', () {

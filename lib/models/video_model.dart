@@ -19,13 +19,41 @@ enum VideoProcessingError {
   storage_error
 }
 
+class VideoQualityVariant {
+  final String quality;
+  final int bitrate;
+  final String playlistUrl;
+
+  VideoQualityVariant({
+    required this.quality,
+    required this.bitrate,
+    required this.playlistUrl,
+  });
+
+  factory VideoQualityVariant.fromMap(Map<String, dynamic> map) {
+    return VideoQualityVariant(
+      quality: map['quality'] as String,
+      bitrate: map['bitrate'] as int,
+      playlistUrl: map['playlistUrl'] as String,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'quality': quality,
+      'bitrate': bitrate,
+      'playlistUrl': playlistUrl,
+    };
+  }
+}
+
 class VideoValidationMetadata {
   final int? width;
   final int? height;
   final double? duration;
   final String? codec;
   final String? format;
-  final int? bitrate;
+  final List<VideoQualityVariant>? variants;
 
   VideoValidationMetadata({
     this.width,
@@ -33,17 +61,21 @@ class VideoValidationMetadata {
     this.duration,
     this.codec,
     this.format,
-    this.bitrate,
+    this.variants,
   });
 
   factory VideoValidationMetadata.fromMap(Map<String, dynamic> map) {
     return VideoValidationMetadata(
       width: map['width'] as int?,
       height: map['height'] as int?,
-      duration: map['duration'] as double?,
+      duration: map['duration'] != null ? (map['duration'] as num).toDouble() : null,
       codec: map['codec'] as String?,
       format: map['format'] as String?,
-      bitrate: map['bitrate'] as int?,
+      variants: map['variants'] != null
+          ? (map['variants'] as List<dynamic>)
+              .map((v) => VideoQualityVariant.fromMap(v as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 
@@ -54,7 +86,7 @@ class VideoValidationMetadata {
       if (duration != null) 'duration': duration,
       if (codec != null) 'codec': codec,
       if (format != null) 'format': format,
-      if (bitrate != null) 'bitrate': bitrate,
+      if (variants != null) 'variants': variants!.map((v) => v.toMap()).toList(),
     };
   }
 }
@@ -65,8 +97,9 @@ class Video {
   final String title;
   final String description;
   final int duration;
-  final String videoUrl;
-  final String thumbnailUrl;
+  final String videoUrl;  // This will be the master playlist URL for HLS
+  final String? hlsBasePath;  // New field for HLS base path
+  final String? thumbnailUrl;
   final DateTime uploadedAt;
   final DateTime lastModified;
   final DateTime? scheduledPublishTime;
@@ -95,7 +128,8 @@ class Video {
     required this.description,
     required this.duration,
     required this.videoUrl,
-    required this.thumbnailUrl,
+    this.hlsBasePath,
+    this.thumbnailUrl,
     required this.uploadedAt,
     required this.lastModified,
     this.scheduledPublishTime,
@@ -128,10 +162,11 @@ class Video {
       title: data['title'],
       description: data['description'],
       duration: data['duration'],
-      videoUrl: data['videoUrl'],
+      videoUrl: data['videoUrl'],  // Master playlist URL
+      hlsBasePath: data['hlsBasePath'],  // HLS base path
       thumbnailUrl: data['thumbnailUrl'],
-      uploadedAt: (data['uploadedAt'] as Timestamp).toDate(),
-      lastModified: (data['lastModified'] as Timestamp).toDate(),
+      uploadedAt: (data['uploadedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      lastModified: (data['lastModified'] as Timestamp?)?.toDate() ?? DateTime.now(),
       scheduledPublishTime: data['scheduledPublishTime'] != null 
           ? (data['scheduledPublishTime'] as Timestamp).toDate() 
           : null,
@@ -181,6 +216,7 @@ class Video {
       'description': description,
       'duration': duration,
       'videoUrl': videoUrl,
+      if (hlsBasePath != null) 'hlsBasePath': hlsBasePath,
       'thumbnailUrl': thumbnailUrl,
       'uploadedAt': Timestamp.fromDate(uploadedAt),
       'lastModified': Timestamp.fromDate(lastModified),
@@ -215,6 +251,7 @@ class Video {
     String? description,
     int? duration,
     String? videoUrl,
+    String? hlsBasePath,
     String? thumbnailUrl,
     DateTime? uploadedAt,
     DateTime? lastModified,
@@ -244,6 +281,7 @@ class Video {
       description: description ?? this.description,
       duration: duration ?? this.duration,
       videoUrl: videoUrl ?? this.videoUrl,
+      hlsBasePath: hlsBasePath ?? this.hlsBasePath,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       uploadedAt: uploadedAt ?? this.uploadedAt,
       lastModified: lastModified ?? this.lastModified,
@@ -266,6 +304,29 @@ class Video {
       validationMetadata: validationMetadata ?? this.validationMetadata,
       validationErrors: validationErrors ?? this.validationErrors,
     );
+  }
+
+  // Helper method to get variant URLs
+  List<VideoQualityVariant>? get qualityVariants => validationMetadata?.variants;
+
+  // Helper method to get URL for specific quality
+  String? getVariantUrl(String quality) {
+    return qualityVariants?.firstWhere(
+      (v) => v.quality == quality,
+      orElse: () => qualityVariants!.first,
+    ).playlistUrl;
+  }
+
+  // Helper method to get best quality URL based on bandwidth
+  String? getAdaptiveUrl(int bandwidthBps) {
+    if (qualityVariants == null || qualityVariants!.isEmpty) {
+      return videoUrl;  // Fall back to master playlist
+    }
+
+    return qualityVariants!
+        .where((v) => v.bitrate <= bandwidthBps)
+        .reduce((a, b) => a.bitrate > b.bitrate ? a : b)
+        .playlistUrl;
   }
 }
 
