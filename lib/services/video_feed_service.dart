@@ -3,47 +3,57 @@ import '../models/video_model.dart';
 import '../repositories/video_repository.dart';
 
 class VideoFeedService {
-  final VideoRepository _videoRepository;
+  final VideoRepository _repository;
   DocumentSnapshot? _lastDocument;
+  bool _hasMoreVideos = true;
 
-  VideoFeedService({VideoRepository? videoRepository})
-      : _videoRepository = videoRepository ?? VideoRepository();
+  VideoFeedService({VideoRepository? repository})
+      : _repository = repository ?? VideoRepository();
 
   Future<Video?> getNextVideo() async {
     try {
-      final querySnapshot = await _videoRepository.getNextFeedVideo(
+      if (!_hasMoreVideos && _lastDocument != null) {
+        _lastDocument = null;
+      }
+
+      final querySnapshot = await _repository.getNextFeedVideo(
         startAfter: _lastDocument,
       );
 
       if (querySnapshot.docs.isEmpty) {
-        // If no more videos after last document, start from beginning
+        _hasMoreVideos = false;
         _lastDocument = null;
-        return getNextVideo();
+        return null;
       }
 
-      _lastDocument = querySnapshot.docs.first;
+      _lastDocument = querySnapshot.docs.last;
+      _hasMoreVideos = true;
+
+      final video = Video.fromFirestore(querySnapshot.docs.first);
+      return video;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Video?> _getFirstVideo() async {
+    try {
+      final querySnapshot = await _repository.getNextFeedVideo();
+
+      if (querySnapshot.docs.isEmpty) {
+        return null;
+      }
+
+      _lastDocument = querySnapshot.docs.last;
+      _hasMoreVideos = true;
       return Video.fromFirestore(querySnapshot.docs.first);
     } catch (e) {
-      return null;
+      rethrow;
     }
   }
 
-  Future<DocumentSnapshot> _getFirstVideo() async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('videos')
-        .orderBy('uploadedAt', descending: true)
-        .limit(1)
-        .get();
-
-    if (querySnapshot.docs.isEmpty) {
-      throw Exception('No videos found in database');
-    }
-
-    return querySnapshot.docs.first;
-  }
-
-  // Reset the feed to start from the beginning
   void resetFeed() {
     _lastDocument = null;
+    _hasMoreVideos = true;
   }
 } 

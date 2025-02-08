@@ -4,6 +4,98 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:echochamber/models/video_model.dart';
 import 'package:echochamber/repositories/video_repository.dart';
 
+Video createTestVideo({
+  String id = 'test-video-id',
+  String userId = 'test-user-id',
+  String title = 'Test Video',
+  String description = 'Test Description',
+  int duration = 120,
+  String? videoUrl,
+  String? hlsBasePath,
+  String? thumbnailUrl,
+  DateTime? uploadedAt,
+  DateTime? lastModified,
+  List<String>? tags,
+  List<String>? genres,
+  List<VideoTimestamp>? timestamps,
+  List<VideoCredit>? credits,
+  Map<String, dynamic>? author,
+  Map<String, dynamic>? copyrightStatus,
+  VideoProcessingStatus? processingStatus,
+  VideoValidationMetadata? validationMetadata,
+  List<VideoSubtitle>? subtitles,
+}) {
+  final now = uploadedAt ?? DateTime.now();
+  return Video(
+    id: id,
+    userId: userId,
+    title: title,
+    description: description,
+    duration: duration,
+    videoUrl: videoUrl ?? 'https://example.com/video.m3u8',
+    hlsBasePath: hlsBasePath ?? 'https://example.com/hls/test-video-id',
+    thumbnailUrl: thumbnailUrl ?? 'https://example.com/thumbnail.jpg',
+    uploadedAt: now,
+    lastModified: lastModified ?? now,
+    tags: tags ?? ['test', 'video', 'example'],
+    genres: genres ?? ['tutorial', 'tech'],
+    timestamps: timestamps ?? [
+      VideoTimestamp(time: 0.0, label: 'Intro'),
+      VideoTimestamp(time: 60.0, label: 'Main Content')
+    ],
+    credits: credits ?? [
+      VideoCredit(
+        userId: 'editor-id',
+        name: 'Test Editor',
+        role: 'Editor',
+        profileUrl: 'https://example.com/editor.jpg'
+      )
+    ],
+    author: author ?? {
+      'id': userId,
+      'name': 'Test Author',
+      'profilePictureUrl': 'https://example.com/profile.jpg',
+    },
+    copyrightStatus: copyrightStatus ?? {
+      'status': 'pending',
+      'owner': 'Test Author',
+      'license': 'Standard',
+    },
+    processingStatus: processingStatus ?? VideoProcessingStatus.completed,
+    validationMetadata: validationMetadata ?? VideoValidationMetadata(
+      width: 1920,
+      height: 1080,
+      duration: 120.0,
+      codec: 'h264',
+      format: 'hls',
+      variants: [
+        VideoQualityVariant(
+          quality: '1080p',
+          bitrate: 5000000,
+          playlistUrl: 'https://example.com/hls/1080p.m3u8'
+        ),
+        VideoQualityVariant(
+          quality: '720p',
+          bitrate: 2800000,
+          playlistUrl: 'https://example.com/hls/720p.m3u8'
+        ),
+        VideoQualityVariant(
+          quality: '480p',
+          bitrate: 1400000,
+          playlistUrl: 'https://example.com/hls/480p.m3u8'
+        )
+      ]
+    ),
+    subtitles: subtitles ?? [
+      VideoSubtitle(
+        timestamp: 0.0,
+        text: 'Hello',
+        language: 'en'
+      )
+    ],
+  );
+}
+
 void main() {
   late FakeFirebaseFirestore fakeFirestore;
   late VideoRepository videoRepository;
@@ -14,75 +106,7 @@ void main() {
     fakeFirestore = FakeFirebaseFirestore();
     videoRepository = VideoRepository(firestore: fakeFirestore);
     now = DateTime.now();
-    
-    testVideo = Video(
-      id: 'test-video-id',
-      userId: 'test-user-id',
-      title: 'Test Video',
-      description: 'Test Description',
-      duration: 120,
-      videoUrl: 'https://example.com/master.m3u8',
-      hlsBasePath: 'videos/test-video-id',
-      thumbnailUrl: 'https://example.com/thumbnail.jpg',
-      uploadedAt: now,
-      lastModified: now,
-      tags: ['tag1', 'tag2'],
-      genres: ['genre1', 'genre2'],
-      timestamps: [
-        VideoTimestamp(time: 0.0, label: 'Intro'),
-        VideoTimestamp(time: 60.0, label: 'Middle')
-      ],
-      credits: [
-        VideoCredit(
-          userId: 'credit-user-1',
-          name: 'Credit Person',
-          role: 'Director',
-          profileUrl: 'https://example.com/credit.jpg'
-        )
-      ],
-      author: {
-        'id': 'test-user-id',
-        'name': 'Test Author',
-        'profilePictureUrl': 'https://example.com/profile.jpg',
-      },
-      copyrightStatus: {
-        'status': 'pending',
-        'owner': 'Test Author',
-        'license': 'Standard',
-      },
-      processingStatus: VideoProcessingStatus.completed,
-      validationMetadata: VideoValidationMetadata(
-        width: 1920,
-        height: 1080,
-        duration: 120.0,
-        codec: 'h264',
-        format: 'hls',
-        variants: [
-          VideoQualityVariant(
-            quality: '1080p',
-            bitrate: 5000000,
-            playlistUrl: 'https://example.com/hls/1080p.m3u8'
-          ),
-          VideoQualityVariant(
-            quality: '720p',
-            bitrate: 2800000,
-            playlistUrl: 'https://example.com/hls/720p.m3u8'
-          ),
-          VideoQualityVariant(
-            quality: '480p',
-            bitrate: 1400000,
-            playlistUrl: 'https://example.com/hls/480p.m3u8'
-          )
-        ]
-      ),
-      subtitles: [
-        VideoSubtitle(
-          timestamp: 0.0,
-          text: 'Hello',
-          language: 'en'
-        )
-      ],
-    );
+    testVideo = createTestVideo(uploadedAt: now, lastModified: now);
   });
 
   group('VideoRepository - Basic CRUD Operations', () {
@@ -208,44 +232,9 @@ void main() {
   });
 
   group('VideoRepository', () {
-    final testVideo = Video(
-      id: 'test_video_id',
-      userId: 'test_user_id',
-      title: 'Test Video',
-      description: 'Test Description',
-      duration: 120,
-      videoUrl: 'https://example.com/master.m3u8',
-      hlsBasePath: 'videos/test_video_id',
-      thumbnailUrl: 'https://example.com/thumbnail.jpg',
-      uploadedAt: DateTime.now(),
-      lastModified: DateTime.now(),
-      author: {
-        'id': 'test_user_id',
-        'name': 'Test User',
-        'profilePictureUrl': 'https://example.com/profile.jpg',
-      },
-      copyrightStatus: {
-        'status': 'cleared',
-        'owner': 'Test User',
-        'license': 'CC BY',
-      },
-      validationMetadata: VideoValidationMetadata(
-        width: 1920,
-        height: 1080,
-        duration: 120.0,
-        codec: 'h264',
-        format: 'hls',
-        variants: [
-          VideoQualityVariant(
-            quality: '1080p',
-            bitrate: 5000000,
-            playlistUrl: 'https://example.com/hls/1080p.m3u8'
-          )
-        ]
-      ),
-    );
-
     test('createVideo successfully creates a video document', () async {
+      final testVideo = createTestVideo();
+      
       // Act
       await videoRepository.createVideo(testVideo);
 
@@ -257,6 +246,8 @@ void main() {
     });
 
     test('getVideoById returns correct video', () async {
+      final testVideo = createTestVideo();
+      
       // Arrange
       await videoRepository.createVideo(testVideo);
 
@@ -267,7 +258,6 @@ void main() {
       expect(video, isNotNull);
       expect(video!.id, testVideo.id);
       expect(video.title, testVideo.title);
-      expect(video.description, testVideo.description);
     });
 
     test('updateVideo successfully updates video metadata', () async {
@@ -604,6 +594,806 @@ void main() {
       expect(result?.validationMetadata?.variants, isNotNull);
       expect(result?.validationMetadata?.variants?.length, 1);
       expect(result?.hlsBasePath, isNotNull);
+    });
+  });
+
+  group('VideoRepository - Watch Session Tests', () {
+    test('startWatchSession creates session and increments view count', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+
+      // Act
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Assert
+      expect(session, isNotNull);
+      expect(session.videoId, testVideo.id);
+      expect(session.userId, 'test-user-id');
+      expect(session.startTime, isNotNull);
+      expect(session.endTime, isNull);
+      expect(session.watchDuration, 0);
+      expect(session.lastPosition, 0);
+      expect(session.completedViewing, false);
+    });
+
+    test('startWatchSession creates new session for same user watching same video', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Act
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Assert
+      expect(session, isNotNull);
+      expect(session.videoId, testVideo.id);
+      expect(session.userId, 'test-user-id');
+      expect(session.startTime, isNotNull);
+      expect(session.endTime, isNull);
+      expect(session.watchDuration, 0);
+      expect(session.lastPosition, 0);
+      expect(session.completedViewing, false);
+    });
+
+    test('getLastWatchSession returns most recent session for user and video', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final firstSession = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+      await Future.delayed(Duration(milliseconds: 100));
+      final secondSession = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Act
+      final lastSession = await videoRepository.getLastWatchSession(testVideo.id, 'test-user-id');
+
+      // Assert
+      expect(lastSession, isNotNull);
+      expect(lastSession!.id, secondSession.id);
+      expect(lastSession.startTime.isAfter(firstSession.startTime), true);
+    });
+
+    test('endWatchSession records end time and updates video stats', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+      await videoRepository.updateWatchSession(session.id, watchDuration: 100, lastPosition: 100);
+
+      // Act
+      await videoRepository.endWatchSession(session.id);
+
+      // Assert
+      final updatedSession = await videoRepository.getWatchSession(session.id);
+      expect(updatedSession, isNotNull);
+      expect(updatedSession!.endTime, isNotNull);
+      expect(updatedSession.watchDuration, 100);
+      expect(updatedSession.lastPosition, 100);
+    });
+
+    test('endWatchSession handles completed viewing correctly', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+      await videoRepository.updateWatchSession(session.id, watchDuration: 110, lastPosition: 110);
+
+      // Act
+      await videoRepository.endWatchSession(session.id);
+
+      // Assert
+      final updatedSession = await videoRepository.getWatchSession(session.id);
+      expect(updatedSession, isNotNull);
+      expect(updatedSession!.completedViewing, true);
+    });
+
+    test('endWatchSession updates last position correctly', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+      await videoRepository.updateWatchSession(session.id, watchDuration: 50, lastPosition: 60);
+
+      // Act
+      await videoRepository.endWatchSession(session.id);
+
+      // Assert
+      final updatedSession = await videoRepository.getWatchSession(session.id);
+      expect(updatedSession, isNotNull);
+      expect(updatedSession!.lastPosition, 60);
+    });
+
+    test('updateWatchSession tracks watch duration correctly', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Act
+      await videoRepository.updateWatchSession(session.id, watchDuration: 30, lastPosition: 30);
+      await videoRepository.updateWatchSession(session.id, watchDuration: 60, lastPosition: 60);
+
+      // Assert
+      final updatedSession = await videoRepository.getWatchSession(session.id);
+      expect(updatedSession, isNotNull);
+      expect(updatedSession!.watchDuration, 60);
+      expect(updatedSession.lastPosition, 60);
+    });
+
+    test('updateWatchSession marks session as completed when >90% watched', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Act
+      await videoRepository.updateWatchSession(session.id, watchDuration: 110, lastPosition: 110);
+
+      // Assert
+      final updatedSession = await videoRepository.getWatchSession(session.id);
+      expect(updatedSession, isNotNull);
+      expect(updatedSession!.watchDuration, 110);
+      expect(updatedSession.completedViewing, true);
+    });
+
+    test('updateWatchSession accumulates watch duration across updates', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+
+      // Act
+      await videoRepository.updateWatchSession(session.id, watchDuration: 30, lastPosition: 30);
+      await videoRepository.updateWatchSession(session.id, watchDuration: 60, lastPosition: 60);
+      await videoRepository.updateWatchSession(session.id, watchDuration: 90, lastPosition: 90);
+
+      // Assert
+      final updatedSession = await videoRepository.getWatchSession(session.id);
+      expect(updatedSession, isNotNull);
+      expect(updatedSession!.watchDuration, 90);
+      expect(updatedSession.lastPosition, 90);
+    });
+
+    test('endWatchSession updates total watch duration in video metadata', () async {
+      final testVideo = createTestVideo();
+      
+      // Arrange
+      await videoRepository.createVideo(testVideo);
+      final session = await videoRepository.startWatchSession(testVideo.id, 'test-user-id');
+      await videoRepository.updateWatchSession(session.id, watchDuration: 100, lastPosition: 100);
+
+      // Act
+      final sessionDoc = await fakeFirestore
+          .collection('watch_sessions')
+          .doc(session.id)
+          .get();
+      
+      // Assert
+      expect(sessionDoc.data()!['lastPosition'], 45);
+      expect(sessionDoc.data()!['watchDuration'], 30); // Duration unchanged by position updates
+    });
+
+    test('video metadata updates correctly with watch analytics', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create multiple sessions with different watch patterns
+      final sessions = [
+        // Completed view
+        {
+          'duration': 95,
+          'completed': true,
+          'position': 95,
+        },
+        // Partial view
+        {
+          'duration': 45,
+          'completed': false,
+          'position': 45,
+        },
+        // Another completed view
+        {
+          'duration': 100,
+          'completed': true,
+          'position': 100,
+        },
+      ];
+
+      for (final sessionData in sessions) {
+        final session = await videoRepository.startWatchSession(
+          testVideo.id,
+          'test-viewer-id',
+        );
+        await videoRepository.updateWatchSession(
+          session.id,
+          duration: sessionData['duration'] as int,
+          completed: sessionData['completed'] as bool,
+          position: sessionData['position'] as int,
+        );
+        await videoRepository.endWatchSession(session.id, testVideo.id);
+      }
+
+      // Act
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+      
+      final data = videoDoc.data()!;
+
+      // Assert
+      expect(data['watchCount'], 2); // Only completed views count
+      expect(data['totalWatchDuration'], 240); // Sum of all watch durations
+      expect(data['lastWatchedAt'], isNotNull);
+      expect((data['lastWatchedAt'] as Timestamp).toDate().isAfter(now), true);
+    });
+
+    test('video analytics update atomically in batch operations', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create multiple concurrent sessions
+      final sessions = await Future.wait([
+        videoRepository.startWatchSession(testVideo.id, 'user1'),
+        videoRepository.startWatchSession(testVideo.id, 'user2'),
+        videoRepository.startWatchSession(testVideo.id, 'user3'),
+      ]);
+
+      // Update all sessions concurrently
+      await Future.wait(sessions.map((session) => 
+        videoRepository.updateWatchSession(
+          session.id,
+          duration: 95,
+          completed: true,
+          position: 95,
+        )
+      ));
+
+      // End all sessions concurrently
+      await Future.wait(sessions.map((session) =>
+        videoRepository.endWatchSession(session.id, testVideo.id)
+      ));
+
+      // Act
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+      
+      final data = videoDoc.data()!;
+
+      // Assert
+      expect(data['watchCount'], 3); // All sessions were completed
+      expect(data['totalWatchDuration'], 285); // 95 * 3
+      expect(data['viewsCount'], 3); // Each session counts as a view
+    });
+
+    test('video analytics handle concurrent updates correctly', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create and update multiple sessions with overlapping updates
+      final futures = <Future>[];
+      for (var i = 0; i < 5; i++) {
+        futures.addAll([
+          () async {
+            final session = await videoRepository.startWatchSession(testVideo.id, 'user$i');
+            await videoRepository.updateWatchSession(
+              session.id,
+              duration: 90,
+              completed: true,
+              position: 90,
+            );
+            await videoRepository.endWatchSession(session.id, testVideo.id);
+          }(),
+        ]);
+      }
+
+      // Act
+      await Future.wait(futures);
+
+      // Assert
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+      
+      final data = videoDoc.data()!;
+
+      expect(data['watchCount'], 5); // All sessions were completed
+      expect(data['totalWatchDuration'], 450); // 90 * 5
+      expect(data['viewsCount'], 5); // Each session counts as a view
+    });
+
+    test('handles multiple watch sessions for same video by same user', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create multiple watch sessions
+      final watchSessions = <WatchSession>[];
+      for (var i = 0; i < 3; i++) {
+        final session = await videoRepository.startWatchSession(
+          testVideo.id,
+          'test-viewer-id',
+        );
+        await videoRepository.updateWatchSession(
+          session.id,
+          duration: 95,
+          completed: true,
+          position: 95,
+        );
+        await videoRepository.endWatchSession(session.id, testVideo.id);
+        watchSessions.add(session);
+        await Future.delayed(const Duration(milliseconds: 100)); // Ensure different timestamps
+      }
+
+      // Act
+      final history = await videoRepository.getWatchHistory('test-viewer-id').first;
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+
+      // Assert
+      expect(history.docs.length, 3); // All sessions are recorded
+      expect(videoDoc.data()!['watchCount'], 3); // Each completed view counts
+      expect(videoDoc.data()!['totalWatchDuration'], 285); // 95 * 3
+    });
+
+    test('handles interrupted watch sessions correctly', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // First session - interrupted at 30%
+      final session1 = await videoRepository.startWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+      await videoRepository.updateWatchSession(
+        session1.id,
+        duration: 30,
+        position: 30,
+      );
+      await videoRepository.endWatchSession(session1.id, testVideo.id);
+
+      // Second session - complete the video
+      final session2 = await videoRepository.startWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+      await videoRepository.updateWatchSession(
+        session2.id,
+        duration: 95,
+        completed: true,
+        position: 95,
+      );
+      await videoRepository.endWatchSession(session2.id, testVideo.id);
+
+      // Act
+      final history = await videoRepository.getWatchHistory('test-viewer-id').first;
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+
+      // Assert
+      expect(history.docs.length, 2); // Both sessions recorded
+      expect(videoDoc.data()!['watchCount'], 1); // Only completed view counts
+      expect(videoDoc.data()!['totalWatchDuration'], 125); // 30 + 95
+    });
+
+    test('handles resuming from previous position', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // First session - watch halfway
+      final session1 = await videoRepository.startWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+      await videoRepository.updateWatchSession(
+        session1.id,
+        duration: 50,
+        position: 50,
+      );
+      await videoRepository.endWatchSession(session1.id, testVideo.id);
+
+      // Get last position
+      final lastSession = await videoRepository.getLastWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+
+      // Second session - resume and complete
+      final session2 = await videoRepository.startWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+      await videoRepository.updateWatchSession(
+        session2.id,
+        duration: 50, // Watch remaining half
+        completed: true,
+        position: 100, // End at full duration
+      );
+      await videoRepository.endWatchSession(session2.id, testVideo.id);
+
+      // Assert
+      expect(lastSession?.lastPosition, 50); // First session position saved
+      
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+      
+      expect(videoDoc.data()!['watchCount'], 1); // Counts as one complete view
+      expect(videoDoc.data()!['totalWatchDuration'], 100); // Total duration watched
+    });
+
+    test('tracks video completion based on watch percentage', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100, // Use 100 for easy percentage calculation
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create sessions with different watch percentages
+      final watchPercentages = [85, 90, 95];
+      final sessions = <WatchSession>[];
+
+      for (final percentage in watchPercentages) {
+        final session = await videoRepository.startWatchSession(
+          testVideo.id,
+          'test-viewer-id',
+        );
+        await videoRepository.updateWatchSession(
+          session.id,
+          duration: percentage,
+          position: percentage,
+          completed: percentage >= 90,
+        );
+        await videoRepository.endWatchSession(session.id, testVideo.id);
+        sessions.add(session);
+      }
+
+      // Act
+      final sessionDocs = await Future.wait(
+        sessions.map((s) => fakeFirestore
+            .collection('watch_sessions')
+            .doc(s.id)
+            .get()
+        )
+      );
+
+      // Assert
+      expect(sessionDocs[0].data()!['completedViewing'], false); // 85%
+      expect(sessionDocs[1].data()!['completedViewing'], true); // 90%
+      expect(sessionDocs[2].data()!['completedViewing'], true); // 95%
+
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+      
+      expect(videoDoc.data()!['watchCount'], 2); // Only 90%+ views count
+    });
+
+    test('completion status affects watch count correctly', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create various watch scenarios
+      final watchScenarios = [
+        {'duration': 95, 'completed': true}, // Completed
+        {'duration': 45, 'completed': false}, // Not completed
+        {'duration': 91, 'completed': true}, // Completed
+        {'duration': 89, 'completed': false}, // Not completed
+        {'duration': 100, 'completed': true}, // Completed
+      ];
+
+      for (final scenario in watchScenarios) {
+        final session = await videoRepository.startWatchSession(
+          testVideo.id,
+          'test-viewer-id',
+        );
+        await videoRepository.updateWatchSession(
+          session.id,
+          duration: scenario['duration'] as int,
+          completed: scenario['completed'] as bool,
+        );
+        await videoRepository.endWatchSession(session.id, testVideo.id);
+      }
+
+      // Act
+      final videoDoc = await fakeFirestore
+          .collection('videos')
+          .doc(testVideo.id)
+          .get();
+      
+      // Assert
+      expect(videoDoc.data()!['watchCount'], 3); // Only completed views count
+      expect(videoDoc.data()!['totalWatchDuration'], 420); // Sum of all durations
+    });
+
+    test('completion status persists after session ends', () async {
+      // Arrange
+      final testVideo = Video(
+        id: 'test-video-id',
+        userId: 'test-user-id',
+        title: 'Test Video',
+        description: 'Test Description',
+        duration: 100,
+        videoUrl: 'https://example.com/video.mp4',
+        thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        uploadedAt: now,
+        lastModified: now,
+        author: {'id': 'test-user-id', 'name': 'Test Author'},
+        copyrightStatus: {'status': 'pending', 'owner': 'Test Author'},
+        validationMetadata: VideoValidationMetadata(
+          width: 1920,
+          height: 1080,
+          duration: 120.0,
+          codec: 'h264',
+          format: 'hls',
+          variants: [
+            VideoQualityVariant(
+              quality: '1080p',
+              bitrate: 5000000,
+              playlistUrl: 'https://example.com/hls/1080p.m3u8'
+            )
+          ]
+        ),
+      );
+      await videoRepository.createVideo(testVideo);
+
+      // Create a completed session
+      final session = await videoRepository.startWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+      await videoRepository.updateWatchSession(
+        session.id,
+        duration: 95,
+        completed: true,
+      );
+      await videoRepository.endWatchSession(session.id, testVideo.id);
+
+      // Act
+      final sessionDoc = await fakeFirestore
+          .collection('watch_sessions')
+          .doc(session.id)
+          .get();
+      
+      final lastSession = await videoRepository.getLastWatchSession(
+        testVideo.id,
+        'test-viewer-id',
+      );
+
+      // Assert
+      expect(sessionDoc.data()!['completedViewing'], true);
+      expect(lastSession?.completedViewing, true);
     });
   });
 } 

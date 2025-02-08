@@ -3,11 +3,11 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i4;
+import 'dart:async' as _i5;
 
 import 'package:cloud_firestore/cloud_firestore.dart' as _i2;
-import 'package:echochamber/models/video_model.dart' as _i5;
-import 'package:echochamber/repositories/video_repository.dart' as _i3;
+import 'package:echochamber/models/video_model.dart' as _i3;
+import 'package:echochamber/repositories/video_repository.dart' as _i4;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i6;
 
@@ -25,130 +25,141 @@ import 'package:mockito/src/dummies.dart' as _i6;
 // ignore_for_file: camel_case_types
 // ignore_for_file: subtype_of_sealed_class
 
-class _FakeSnapshotMetadata_0 extends _i1.SmartFake
-    implements _i2.SnapshotMetadata {
-  _FakeSnapshotMetadata_0(Object parent, Invocation parentInvocation)
+class _FakeQuerySnapshot_0<T extends Object?> extends _i1.SmartFake
+    implements _i2.QuerySnapshot<T> {
+  _FakeQuerySnapshot_0(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
-class _FakeDocumentReference_1<T1 extends Object?> extends _i1.SmartFake
-    implements _i2.DocumentReference<T1> {
-  _FakeDocumentReference_1(Object parent, Invocation parentInvocation)
+class _FakeWatchSession_1 extends _i1.SmartFake implements _i3.WatchSession {
+  _FakeWatchSession_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeSnapshotMetadata_2 extends _i1.SmartFake
+    implements _i2.SnapshotMetadata {
+  _FakeSnapshotMetadata_2(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeDocumentReference_3<T extends Object?> extends _i1.SmartFake
+    implements _i2.DocumentReference<T> {
+  _FakeDocumentReference_3(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
 /// A class which mocks [VideoRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockVideoRepository extends _i1.Mock implements _i3.VideoRepository {
+class MockVideoRepository extends _i1.Mock implements _i4.VideoRepository {
   MockVideoRepository() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i4.Future<void> createVideo(_i5.Video? video) =>
+  _i5.Future<void> createVideo(_i3.Video? video) =>
       (super.noSuchMethod(
             Invocation.method(#createVideo, [video]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<_i5.Video?> getVideoById(String? videoId) =>
+  _i5.Future<_i3.Video?> getVideoById(String? videoId) =>
       (super.noSuchMethod(
             Invocation.method(#getVideoById, [videoId]),
-            returnValue: _i4.Future<_i5.Video?>.value(),
+            returnValue: _i5.Future<_i3.Video?>.value(),
           )
-          as _i4.Future<_i5.Video?>);
+          as _i5.Future<_i3.Video?>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getUserVideos(String? userId) =>
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getUserVideos(String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#getUserVideos, [userId]),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getVideosByGenre(String? genre) =>
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getVideosByGenre(String? genre) =>
       (super.noSuchMethod(
             Invocation.method(#getVideosByGenre, [genre]),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getVideosByTag(String? tag) =>
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getVideosByTag(String? tag) =>
       (super.noSuchMethod(
             Invocation.method(#getVideosByTag, [tag]),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 
   @override
-  _i4.Future<void> updateVideo(String? videoId, Map<String, dynamic>? data) =>
+  _i5.Future<void> updateVideo(String? videoId, Map<String, dynamic>? data) =>
       (super.noSuchMethod(
             Invocation.method(#updateVideo, [videoId, data]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<void> deleteVideo(String? videoId) =>
+  _i5.Future<void> deleteVideo(String? videoId) =>
       (super.noSuchMethod(
             Invocation.method(#deleteVideo, [videoId]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<void> incrementViewCount(String? videoId) =>
+  _i5.Future<void> incrementViewCount(String? videoId) =>
       (super.noSuchMethod(
             Invocation.method(#incrementViewCount, [videoId]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<void> likeVideo(String? videoId, String? userId) =>
+  _i5.Future<void> likeVideo(String? videoId, String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#likeVideo, [videoId, userId]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<void> unlikeVideo(String? videoId, String? userId) =>
+  _i5.Future<void> unlikeVideo(String? videoId, String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#unlikeVideo, [videoId, userId]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<bool> hasUserLikedVideo(String? videoId, String? userId) =>
+  _i5.Future<bool> hasUserLikedVideo(String? videoId, String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#hasUserLikedVideo, [videoId, userId]),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getTrendingVideos({int? limit = 10}) =>
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getTrendingVideos({int? limit = 10}) =>
       (super.noSuchMethod(
             Invocation.method(#getTrendingVideos, [], {#limit: limit}),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getFeedVideos({
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getFeedVideos({
     int? limit = 10,
     _i2.DocumentSnapshot<Object?>? startAfter,
   }) =>
@@ -157,70 +168,178 @@ class MockVideoRepository extends _i1.Mock implements _i3.VideoRepository {
               #limit: limit,
               #startAfter: startAfter,
             }),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getUserLikedVideos(String? userId) =>
+  _i5.Future<_i2.QuerySnapshot<Object?>> getNextFeedVideo({
+    _i2.DocumentSnapshot<Object?>? startAfter,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNextFeedVideo, [], {#startAfter: startAfter}),
+            returnValue: _i5.Future<_i2.QuerySnapshot<Object?>>.value(
+              _FakeQuerySnapshot_0<Object?>(
+                this,
+                Invocation.method(#getNextFeedVideo, [], {
+                  #startAfter: startAfter,
+                }),
+              ),
+            ),
+          )
+          as _i5.Future<_i2.QuerySnapshot<Object?>>);
+
+  @override
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getUserLikedVideos(String? userId) =>
       (super.noSuchMethod(
             Invocation.method(#getUserLikedVideos, [userId]),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 
   @override
-  _i4.Future<void> addComment(
+  _i5.Future<void> addComment(
     String? videoId,
     String? userId,
     String? comment,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#addComment, [videoId, userId, comment]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Stream<_i2.QuerySnapshot<Object?>> getVideoComments(String? videoId) =>
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getVideoComments(String? videoId) =>
       (super.noSuchMethod(
             Invocation.method(#getVideoComments, [videoId]),
-            returnValue: _i4.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
           )
-          as _i4.Stream<_i2.QuerySnapshot<Object?>>);
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
+
+  @override
+  _i5.Future<List<_i3.VideoQualityVariant>?> getVideoVariants(
+    String? videoId,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getVideoVariants, [videoId]),
+            returnValue: _i5.Future<List<_i3.VideoQualityVariant>?>.value(),
+          )
+          as _i5.Future<List<_i3.VideoQualityVariant>?>);
+
+  @override
+  _i5.Future<String?> getVideoUrlForQuality(String? videoId, String? quality) =>
+      (super.noSuchMethod(
+            Invocation.method(#getVideoUrlForQuality, [videoId, quality]),
+            returnValue: _i5.Future<String?>.value(),
+          )
+          as _i5.Future<String?>);
+
+  @override
+  _i5.Future<String?> getAdaptiveVideoUrl(String? videoId, int? bandwidthBps) =>
+      (super.noSuchMethod(
+            Invocation.method(#getAdaptiveVideoUrl, [videoId, bandwidthBps]),
+            returnValue: _i5.Future<String?>.value(),
+          )
+          as _i5.Future<String?>);
+
+  @override
+  _i5.Future<_i3.WatchSession> startWatchSession(
+    String? videoId,
+    String? userId,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#startWatchSession, [videoId, userId]),
+            returnValue: _i5.Future<_i3.WatchSession>.value(
+              _FakeWatchSession_1(
+                this,
+                Invocation.method(#startWatchSession, [videoId, userId]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.WatchSession>);
+
+  @override
+  _i5.Future<void> updateWatchSession(
+    String? sessionId, {
+    int? position,
+    int? duration,
+    bool? completed,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #updateWatchSession,
+              [sessionId],
+              {#position: position, #duration: duration, #completed: completed},
+            ),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> endWatchSession(String? sessionId, String? videoId) =>
+      (super.noSuchMethod(
+            Invocation.method(#endWatchSession, [sessionId, videoId]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.WatchSession?> getLastWatchSession(
+    String? videoId,
+    String? userId,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getLastWatchSession, [videoId, userId]),
+            returnValue: _i5.Future<_i3.WatchSession?>.value(),
+          )
+          as _i5.Future<_i3.WatchSession?>);
+
+  @override
+  _i5.Stream<_i2.QuerySnapshot<Object?>> getWatchHistory(
+    String? userId, {
+    int? limit = 50,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#getWatchHistory, [userId], {#limit: limit}),
+            returnValue: _i5.Stream<_i2.QuerySnapshot<Object?>>.empty(),
+          )
+          as _i5.Stream<_i2.QuerySnapshot<Object?>>);
 }
 
 /// A class which mocks [QuerySnapshot].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockQuerySnapshot<T extends Object?> extends _i1.Mock
-    implements _i2.QuerySnapshot<T> {
-  MockQuerySnapshot() {
+class MockFirestoreQuerySnapshot extends _i1.Mock
+    implements _i2.QuerySnapshot<Map<String, dynamic>> {
+  MockFirestoreQuerySnapshot() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  List<_i2.QueryDocumentSnapshot<T>> get docs =>
+  List<_i2.QueryDocumentSnapshot<Map<String, dynamic>>> get docs =>
       (super.noSuchMethod(
             Invocation.getter(#docs),
-            returnValue: <_i2.QueryDocumentSnapshot<T>>[],
+            returnValue: <_i2.QueryDocumentSnapshot<Map<String, dynamic>>>[],
           )
-          as List<_i2.QueryDocumentSnapshot<T>>);
+          as List<_i2.QueryDocumentSnapshot<Map<String, dynamic>>>);
 
   @override
-  List<_i2.DocumentChange<T>> get docChanges =>
+  List<_i2.DocumentChange<Map<String, dynamic>>> get docChanges =>
       (super.noSuchMethod(
             Invocation.getter(#docChanges),
-            returnValue: <_i2.DocumentChange<T>>[],
+            returnValue: <_i2.DocumentChange<Map<String, dynamic>>>[],
           )
-          as List<_i2.DocumentChange<T>>);
+          as List<_i2.DocumentChange<Map<String, dynamic>>>);
 
   @override
   _i2.SnapshotMetadata get metadata =>
       (super.noSuchMethod(
             Invocation.getter(#metadata),
-            returnValue: _FakeSnapshotMetadata_0(
+            returnValue: _FakeSnapshotMetadata_2(
               this,
               Invocation.getter(#metadata),
             ),
@@ -235,9 +354,9 @@ class MockQuerySnapshot<T extends Object?> extends _i1.Mock
 /// A class which mocks [QueryDocumentSnapshot].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockQueryDocumentSnapshot<T extends Object?> extends _i1.Mock
-    implements _i2.QueryDocumentSnapshot<T> {
-  MockQueryDocumentSnapshot() {
+class MockFirestoreDocumentSnapshot extends _i1.Mock
+    implements _i2.QueryDocumentSnapshot<Map<String, dynamic>> {
+  MockFirestoreDocumentSnapshot() {
     _i1.throwOnMissingStub(this);
   }
 
@@ -250,21 +369,21 @@ class MockQueryDocumentSnapshot<T extends Object?> extends _i1.Mock
           as String);
 
   @override
-  _i2.DocumentReference<T> get reference =>
+  _i2.DocumentReference<Map<String, dynamic>> get reference =>
       (super.noSuchMethod(
             Invocation.getter(#reference),
-            returnValue: _FakeDocumentReference_1<T>(
+            returnValue: _FakeDocumentReference_3<Map<String, dynamic>>(
               this,
               Invocation.getter(#reference),
             ),
           )
-          as _i2.DocumentReference<T>);
+          as _i2.DocumentReference<Map<String, dynamic>>);
 
   @override
   _i2.SnapshotMetadata get metadata =>
       (super.noSuchMethod(
             Invocation.getter(#metadata),
-            returnValue: _FakeSnapshotMetadata_0(
+            returnValue: _FakeSnapshotMetadata_2(
               this,
               Invocation.getter(#metadata),
             ),
@@ -277,12 +396,12 @@ class MockQueryDocumentSnapshot<T extends Object?> extends _i1.Mock
           as bool);
 
   @override
-  T data() =>
+  Map<String, dynamic> data() =>
       (super.noSuchMethod(
             Invocation.method(#data, []),
-            returnValue: _i6.dummyValue<T>(this, Invocation.method(#data, [])),
+            returnValue: <String, dynamic>{},
           )
-          as T);
+          as Map<String, dynamic>);
 
   @override
   dynamic get(Object? field) =>

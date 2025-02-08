@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 enum VideoProcessingStatus {
   pending,
@@ -27,14 +28,36 @@ class VideoQualityVariant {
   VideoQualityVariant({
     required this.quality,
     required this.bitrate,
-    required this.playlistUrl,
-  });
+    required String playlistUrl,
+  }) : playlistUrl = playlistUrl.startsWith('http') ? playlistUrl : 'gs://echo-chamber-8fb5f.firebasestorage.app/$playlistUrl';
 
   factory VideoQualityVariant.fromMap(Map<String, dynamic> map) {
+    // Handle missing or null values
+    final quality = map['quality']?.toString() ?? 'auto';
+    final bitrate = (map['bitrate'] as num?)?.toInt() ?? 0;
+    final playlistUrl = map['playlistUrl']?.toString();
+    
+    if (playlistUrl == null) {
+      throw FormatException('Missing playlistUrl in variant data');
+    }
+    
+    // Extract the path from the Firebase Storage REST API URL
+    String transformedUrl = playlistUrl;
+    if (playlistUrl.contains('firebasestorage.googleapis.com')) {
+      final uri = Uri.parse(playlistUrl);
+      // Find the 'o' segment which indicates where the path starts
+      final oIndex = uri.pathSegments.indexOf('o');
+      if (oIndex >= 0 && oIndex + 1 < uri.pathSegments.length) {
+        // Get all segments after 'o' and decode them
+        final path = Uri.decodeComponent(uri.pathSegments[oIndex + 1]);
+        transformedUrl = path;
+      }
+    }
+    
     return VideoQualityVariant(
-      quality: map['quality'] as String,
-      bitrate: map['bitrate'] as int,
-      playlistUrl: map['playlistUrl'] as String,
+      quality: quality,
+      bitrate: bitrate,
+      playlistUrl: transformedUrl,
     );
   }
 
@@ -65,17 +88,31 @@ class VideoValidationMetadata {
   });
 
   factory VideoValidationMetadata.fromMap(Map<String, dynamic> map) {
+    // Handle missing or null values
+    final width = (map['width'] as num?)?.toInt();
+    final height = (map['height'] as num?)?.toInt();
+    final duration = map['duration'] != null ? (map['duration'] as num).toDouble() : null;
+    final codec = map['codec']?.toString();
+    final format = map['format']?.toString();
+    
+    List<VideoQualityVariant>? variants;
+    if (map['variants'] != null) {
+      try {
+        variants = (map['variants'] as List<dynamic>)
+            .map((v) => VideoQualityVariant.fromMap(v as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
+        // Continue without variants
+      }
+    }
+    
     return VideoValidationMetadata(
-      width: map['width'] as int?,
-      height: map['height'] as int?,
-      duration: map['duration'] != null ? (map['duration'] as num).toDouble() : null,
-      codec: map['codec'] as String?,
-      format: map['format'] as String?,
-      variants: map['variants'] != null
-          ? (map['variants'] as List<dynamic>)
-              .map((v) => VideoQualityVariant.fromMap(v as Map<String, dynamic>))
-              .toList()
-          : null,
+      width: width,
+      height: height,
+      duration: duration,
+      codec: codec,
+      format: format,
+      variants: variants,
     );
   }
 
@@ -120,6 +157,9 @@ class Video {
   final VideoProcessingError processingError;
   final VideoValidationMetadata? validationMetadata;
   final List<String>? validationErrors;
+  final int watchCount;
+  final DateTime? lastWatchedAt;
+  final int totalWatchDuration; // in seconds
 
   Video({
     required this.id,
@@ -150,20 +190,43 @@ class Video {
     this.processingError = VideoProcessingError.none,
     this.validationMetadata,
     this.validationErrors,
+    this.watchCount = 0,
+    this.lastWatchedAt,
+    this.totalWatchDuration = 0,
   });
 
   // Create a Video from a Firestore document
   factory Video.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     
+    // Handle description that might be an array
+    String description = '';
+    if (data['description'] is List) {
+      description = (data['description'] as List).join('\n');
+    } else if (data['description'] is String) {
+      description = data['description'];
+    }
+    
+    // Handle optional validation metadata
+    VideoValidationMetadata? validationMetadata;
+    if (data.containsKey('validationMetadata') && data['validationMetadata'] != null) {
+      try {
+        validationMetadata = VideoValidationMetadata.fromMap(
+          data['validationMetadata'] as Map<String, dynamic>
+        );
+      } catch (e) {
+        // Continue without validation metadata
+      }
+    }
+    
     return Video(
       id: doc.id,
       userId: data['userId'],
       title: data['title'],
-      description: data['description'],
+      description: description,
       duration: data['duration'],
-      videoUrl: data['videoUrl'],  // Master playlist URL
-      hlsBasePath: data['hlsBasePath'],  // HLS base path
+      videoUrl: data['videoUrl'],
+      hlsBasePath: data['hlsBasePath'],
       thumbnailUrl: data['thumbnailUrl'],
       uploadedAt: (data['uploadedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastModified: (data['lastModified'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -199,12 +262,15 @@ class Video {
         (e) => e.toString() == 'VideoProcessingError.${data['processingError'] ?? 'none'}',
         orElse: () => VideoProcessingError.none,
       ),
-      validationMetadata: data['validationMetadata'] != null
-          ? VideoValidationMetadata.fromMap(data['validationMetadata'] as Map<String, dynamic>)
-          : null,
+      validationMetadata: validationMetadata,
       validationErrors: data['validationErrors'] != null
           ? List<String>.from(data['validationErrors'] as List)
           : null,
+      watchCount: data['watchCount'] ?? 0,
+      lastWatchedAt: data['lastWatchedAt'] != null 
+          ? (data['lastWatchedAt'] as Timestamp).toDate() 
+          : null,
+      totalWatchDuration: data['totalWatchDuration'] ?? 0,
     );
   }
 
@@ -240,6 +306,9 @@ class Video {
       'processingError': processingError.toString().split('.').last,
       if (validationMetadata != null) 'validationMetadata': validationMetadata!.toMap(),
       if (validationErrors != null) 'validationErrors': validationErrors,
+      'watchCount': watchCount,
+      if (lastWatchedAt != null) 'lastWatchedAt': Timestamp.fromDate(lastWatchedAt!),
+      'totalWatchDuration': totalWatchDuration,
     };
   }
 
@@ -273,6 +342,9 @@ class Video {
     VideoProcessingError? processingError,
     VideoValidationMetadata? validationMetadata,
     List<String>? validationErrors,
+    int? watchCount,
+    DateTime? lastWatchedAt,
+    int? totalWatchDuration,
   }) {
     return Video(
       id: id ?? this.id,
@@ -303,6 +375,9 @@ class Video {
       processingError: processingError ?? this.processingError,
       validationMetadata: validationMetadata ?? this.validationMetadata,
       validationErrors: validationErrors ?? this.validationErrors,
+      watchCount: watchCount ?? this.watchCount,
+      lastWatchedAt: lastWatchedAt ?? this.lastWatchedAt,
+      totalWatchDuration: totalWatchDuration ?? this.totalWatchDuration,
     );
   }
 
@@ -410,6 +485,161 @@ class VideoSubtitle {
       'timestamp': timestamp,
       'text': text,
       'language': language,
+    };
+  }
+}
+
+class WatchSession {
+  final String id;
+  final String videoId;
+  final String userId;
+  final DateTime startTime;
+  final DateTime? endTime;
+  final int watchDuration; // in seconds
+  final int lastPosition; // in seconds
+  final bool completedViewing;
+
+  WatchSession({
+    required this.id,
+    required this.videoId,
+    required this.userId,
+    required this.startTime,
+    this.endTime,
+    this.watchDuration = 0,
+    this.lastPosition = 0,
+    this.completedViewing = false,
+  });
+
+  factory WatchSession.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return WatchSession(
+      id: doc.id,
+      videoId: data['videoId'],
+      userId: data['userId'],
+      startTime: (data['startTime'] as Timestamp).toDate(),
+      endTime: data['endTime'] != null ? (data['endTime'] as Timestamp).toDate() : null,
+      watchDuration: data['watchDuration'] ?? 0,
+      lastPosition: data['lastPosition'] ?? 0,
+      completedViewing: data['completedViewing'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'videoId': videoId,
+      'userId': userId,
+      'startTime': Timestamp.fromDate(startTime),
+      if (endTime != null) 'endTime': Timestamp.fromDate(endTime!),
+      'watchDuration': watchDuration,
+      'lastPosition': lastPosition,
+      'completedViewing': completedViewing,
+    };
+  }
+
+  WatchSession copyWith({
+    String? id,
+    String? videoId,
+    String? userId,
+    DateTime? startTime,
+    DateTime? endTime,
+    int? watchDuration,
+    int? lastPosition,
+    bool? completedViewing,
+  }) {
+    return WatchSession(
+      id: id ?? this.id,
+      videoId: videoId ?? this.videoId,
+      userId: userId ?? this.userId,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      watchDuration: watchDuration ?? this.watchDuration,
+      lastPosition: lastPosition ?? this.lastPosition,
+      completedViewing: completedViewing ?? this.completedViewing,
+    );
+  }
+}
+
+class WatchHistoryEntry {
+  final String id;
+  final String videoId;
+  final String userId;
+  final DateTime watchedAt;
+  final int watchDuration;
+  final VideoMetadata videoMetadata;
+  final bool completed;
+
+  WatchHistoryEntry({
+    required this.id,
+    required this.videoId,
+    required this.userId,
+    required this.watchedAt,
+    required this.watchDuration,
+    required this.videoMetadata,
+    this.completed = false,
+  });
+
+  factory WatchHistoryEntry.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return WatchHistoryEntry(
+      id: doc.id,
+      videoId: data['videoId'],
+      userId: data['userId'],
+      watchedAt: (data['watchedAt'] as Timestamp).toDate(),
+      watchDuration: data['watchDuration'] ?? 0,
+      videoMetadata: VideoMetadata.fromMap(data['videoMetadata'] as Map<String, dynamic>),
+      completed: data['completed'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'videoId': videoId,
+      'userId': userId,
+      'watchedAt': Timestamp.fromDate(watchedAt),
+      'watchDuration': watchDuration,
+      'videoMetadata': videoMetadata.toMap(),
+      'completed': completed,
+    };
+  }
+}
+
+class VideoMetadata {
+  final String title;
+  final String? thumbnailUrl;
+  final int duration;
+  final Map<String, dynamic> author;
+
+  VideoMetadata({
+    required this.title,
+    this.thumbnailUrl,
+    required this.duration,
+    required this.author,
+  });
+
+  factory VideoMetadata.fromMap(Map<String, dynamic> map) {
+    return VideoMetadata(
+      title: map['title'],
+      thumbnailUrl: map['thumbnailUrl'],
+      duration: map['duration'],
+      author: Map<String, dynamic>.from(map['author']),
+    );
+  }
+
+  factory VideoMetadata.fromVideo(Video video) {
+    return VideoMetadata(
+      title: video.title,
+      thumbnailUrl: video.thumbnailUrl,
+      duration: video.duration,
+      author: video.author,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
+      'author': author,
     };
   }
 } 
