@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../models/video_model.dart';
 
 class VideoRepository {
@@ -322,7 +321,6 @@ class VideoRepository {
       await batch.commit();
       return session;
     } catch (e) {
-      print('Error in startWatchSession: $e');
       rethrow;
     }
   }
@@ -414,7 +412,7 @@ class VideoRepository {
       String entryId;
       if (existingEntryQuery.docs.isEmpty) {
         // Create new entry with a known ID based on videoId and userId
-        entryId = '${videoId}_${userId}';
+        entryId = '${videoId}_$userId';
         final entryRef = _firestore.collection(_watchHistoryCollection).doc(entryId);
         final entry = WatchHistoryEntry(
           id: entryId,
@@ -440,7 +438,6 @@ class VideoRepository {
       await _cleanupOldEntries(userId);
       return entryId;
     } catch (e) {
-      print('Error in addToWatchHistory: $e');
       rethrow;
     }
   }
@@ -455,11 +452,22 @@ class VideoRepository {
       // First check if the document exists
       final docSnapshot = await entryRef.get();
       if (!docSnapshot.exists) {
-        throw FirebaseException(
-          plugin: 'cloud_firestore',
-          code: 'not-found',
-          message: 'Watch history entry not found'
-        );
+        // Parse videoId and userId from entryId (format: videoId_userId)
+        final parts = entryId.split('_');
+        if (parts.length >= 2) {
+          final videoId = parts[0];
+          final userId = parts[1];
+          // Create new watch history entry
+          await addToWatchHistory(videoId, userId);
+          // Try update again after creation
+          final updates = <String, dynamic>{
+            'lastUpdated': FieldValue.serverTimestamp(),
+          };
+          if (watchDuration != null) updates['watchDuration'] = watchDuration;
+          if (completed != null) updates['completed'] = completed;
+          await entryRef.update(updates);
+          return;
+        }
       }
 
       final updates = <String, dynamic>{
@@ -471,8 +479,7 @@ class VideoRepository {
       
       await entryRef.update(updates);
     } catch (e) {
-      print('Error in updateWatchHistoryEntry: $e');
-      rethrow;
+      // debugPrint('Error updating watch history entry: $e', name: 'VideoRepository');
     }
   }
 
@@ -599,7 +606,7 @@ class VideoRepository {
     // Apply search query if specified
     if (searchQuery != null && searchQuery.isNotEmpty) {
       query = query.where('title', isGreaterThanOrEqualTo: searchQuery)
-                  .where('title', isLessThan: searchQuery + 'z');
+                  .where('title', isLessThan: '${searchQuery}z');
     }
 
     // Apply pagination

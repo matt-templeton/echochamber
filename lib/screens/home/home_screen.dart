@@ -22,12 +22,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(initialPage: 1);
-  bool _isSwipingLeft = false;
+  // bool _isSwipingLeft = false;
   int _selectedIndex = 0;
   bool _isFollowingSelected = false;
   bool _isLoading = false;
-  bool _isProcessingPageChange = false;
-  int _currentPage = 1;
+  // bool _isProcessingPageChange = false;
+  // int _currentPage = 1;
 
   @override
   void initState() {
@@ -62,63 +62,63 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _onPageChanged(int page) async {
-    if (_isProcessingPageChange || !mounted) return;
+  // Future<void> _onPageChanged(int page) async {
+  //   if (_isProcessingPageChange || !mounted) return;
 
-    try {
-      _isProcessingPageChange = true;
-      final provider = context.read<VideoFeedProvider>();
+  //   try {
+  //     _isProcessingPageChange = true;
+  //     final provider = context.read<VideoFeedProvider>();
       
-      // Get current video player key to find the widget
-      final currentVideoKey = provider.currentVideo != null ? 
-          ValueKey(provider.currentVideo!.id) : null;
+  //     // Get current video player key to find the widget
+  //     final currentVideoKey = provider.currentVideo != null ? 
+  //         ValueKey(provider.currentVideo!.id) : null;
       
-      // Find the video player widget and trigger cleanup
-      if (currentVideoKey != null) {
-        dev.log('Starting preemptive cleanup before page change', name: 'HomeScreen');
-        // Set controller to non-ready state before cleanup
-        provider.setControllerReady(false);
+  //     // Find the video player widget and trigger cleanup
+  //     if (currentVideoKey != null) {
+  //       dev.log('Starting preemptive cleanup before page change', name: 'HomeScreen');
+  //       // Set controller to non-ready state before cleanup
+  //       provider.setControllerReady(false);
         
-        // Small delay to ensure UI updates
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
+  //       // Small delay to ensure UI updates
+  //       await Future.delayed(const Duration(milliseconds: 100));
+  //     }
 
-      if (!mounted) return;
+  //     if (!mounted) return;
 
-      if (page > _currentPage) {
-        dev.log('Loading next video', name: 'HomeScreen');
-        await provider.loadNextVideo();
-      } else if (page < _currentPage) {
-        dev.log('Loading previous video', name: 'HomeScreen');
-        await provider.loadPreviousVideo();
-      }
+  //     if (page > _currentPage) {
+  //       dev.log('Loading next video', name: 'HomeScreen');
+  //       await provider.loadNextVideo();
+  //     } else if (page < _currentPage) {
+  //       dev.log('Loading previous video', name: 'HomeScreen');
+  //       await provider.loadPreviousVideo();
+  //     }
 
-      if (!mounted) return;
+  //     if (!mounted) return;
       
-      setState(() {
-        _currentPage = page;
-      });
+  //     setState(() {
+  //       _currentPage = page;
+  //     });
 
-      // Reset page controller after state is updated
-      if (_pageController.page != 0) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        if (mounted) {
-          _pageController.jumpToPage(0);
-        }
-      }
-    } catch (e) {
-      dev.log('Error during page change: $e', name: 'HomeScreen', error: e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading video')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        _isProcessingPageChange = false;
-      }
-    }
-  }
+  //     // Reset page controller after state is updated
+  //     if (_pageController.page != 0) {
+  //       await Future.delayed(const Duration(milliseconds: 100));
+  //       if (mounted) {
+  //         _pageController.jumpToPage(0);
+  //       }
+  //     }
+  //   } catch (e) {
+  //     dev.log('Error during page change: $e', name: 'HomeScreen', error: e);
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('Error loading video')),
+  //       );
+  //     }
+  //   } finally {
+  //     if (mounted) {
+  //       _isProcessingPageChange = false;
+  //     }
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -174,17 +174,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 return PageView(
                   controller: _pageController,
-                  onPageChanged: _onPageChanged,
+                  // onPageChanged: _onPageChanged,
                   children: [
                     // Previous page (for left swipe)
                     Container(color: Colors.black),
                     // Current video
                     GestureDetector(
-                      onHorizontalDragStart: (details) {
-                        if (!provider.isLoading) {
-                          _isSwipingLeft = details.globalPosition.dx < MediaQuery.of(context).size.width / 2;
-                        }
-                      },
+                      // onHorizontalDragStart: (details) {
+                      //   // if (!provider.isLoading) {
+                      //   //   _isSwipingLeft = details.globalPosition.dx < MediaQuery.of(context).size.width / 2;
+                      //   // }
+                      //   dev.log('Horizontal drag started', name: 'HomeScreen');
+                      // },
                       child: HLSVideoPlayer(
                         key: ValueKey(provider.currentVideo!.id),
                         videoUrl: provider.currentVideo!.videoUrl,

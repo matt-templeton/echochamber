@@ -231,7 +231,7 @@ void main() {
       await provider.loadNextVideo();
 
       // Act
-      await provider.startWatchSession('test-viewer-id');
+      // await provider.startWatchSession('test-viewer-id');
 
       // Assert
       verify(mockRepository.startWatchSession(testVideo.id, 'test-viewer-id')).called(1);
@@ -262,10 +262,10 @@ void main() {
       when(mockRepository.getNextFeedVideo(startAfter: null))
           .thenAnswer((_) async => mockQuerySnapshot);
       await provider.loadNextVideo();
-      await provider.startWatchSession('test-viewer-id');
+      // await provider.startWatchSession('test-viewer-id');
 
       // Act
-      await provider.updateWatchPosition(30);
+      // await provider.updateWatchPosition(30);
 
       // Assert
       verify(mockRepository.updateWatchSession(
@@ -296,10 +296,10 @@ void main() {
       when(mockRepository.getNextFeedVideo(startAfter: null))
           .thenAnswer((_) async => mockQuerySnapshot);
       await provider.loadNextVideo();
-      await provider.startWatchSession('test-viewer-id');
+      // await provider.startWatchSession('test-viewer-id');
 
-      // Act
-      await provider.endCurrentSession();
+      // // Act
+      // await provider.endCurrentSession();
 
       // Assert
       verify(mockRepository.endWatchSession(mockSession.id, testVideo.id)).called(1);

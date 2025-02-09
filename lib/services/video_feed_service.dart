@@ -36,21 +36,21 @@ class VideoFeedService {
     }
   }
 
-  Future<Video?> _getFirstVideo() async {
-    try {
-      final querySnapshot = await _repository.getNextFeedVideo();
+  // Future<Video?> _getFirstVideo() async {
+  //   try {
+  //     final querySnapshot = await _repository.getNextFeedVideo();
 
-      if (querySnapshot.docs.isEmpty) {
-        return null;
-      }
+  //     if (querySnapshot.docs.isEmpty) {
+  //       return null;
+  //     }
 
-      _lastDocument = querySnapshot.docs.last;
-      _hasMoreVideos = true;
-      return Video.fromFirestore(querySnapshot.docs.first);
-    } catch (e) {
-      rethrow;
-    }
-  }
+  //     _lastDocument = querySnapshot.docs.last;
+  //     _hasMoreVideos = true;
+  //     return Video.fromFirestore(querySnapshot.docs.first);
+  //   } catch (e) {
+  //     rethrow;
+  //   }
+  // }
 
   void resetFeed() {
     _lastDocument = null;

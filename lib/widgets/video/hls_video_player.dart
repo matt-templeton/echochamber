@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
-import '../../models/video_model.dart';
 import '../../providers/video_feed_provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import 'dart:developer' as dev;
 
@@ -321,30 +318,30 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
           _dragProgress = tapPosition;  // Ensure the visual position is updated
         });
       },
-      onHorizontalDragStart: (details) {
-        setState(() {
-          _isDragging = true;
-          _dragProgress = details.localPosition.dx / context.size!.width;
-        });
-        _controller.pause();
-      },
-      onHorizontalDragUpdate: (details) {
-        setState(() {
-          _dragProgress = details.localPosition.dx / context.size!.width;
-          _dragProgress = _dragProgress.clamp(0.0, 1.0);
-        });
-      },
-      onHorizontalDragEnd: (details) async {
-        final duration = _controller.value.duration;
-        final targetPosition = duration * _dragProgress;
+      // onHorizontalDragStart: (details) {
+      //   setState(() {
+      //     _isDragging = true;
+      //     _dragProgress = details.localPosition.dx / context.size!.width;
+      //   });
+      //   _controller.pause();
+      // },
+      // onHorizontalDragUpdate: (details) {
+      //   setState(() {
+      //     _dragProgress = details.localPosition.dx / context.size!.width;
+      //     _dragProgress = _dragProgress.clamp(0.0, 1.0);
+      //   });
+      // },
+      // onHorizontalDragEnd: (details) async {
+      //   final duration = _controller.value.duration;
+      //   final targetPosition = duration * _dragProgress;
         
-        setState(() {
-          _isDragging = false;
-        });
+      //   setState(() {
+      //     _isDragging = false;
+      //   });
         
-        await _controller.seekTo(targetPosition);
-        _controller.play();
-      },
+      //   await _controller.seekTo(targetPosition);
+      //   _controller.play();
+      // },
     );
   }
 }
