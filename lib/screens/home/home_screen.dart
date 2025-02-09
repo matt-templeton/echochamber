@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/video_feed_provider.dart';
-import '../../widgets/video/hls_video_player.dart';
+import '../../widgets/video/video_queue.dart';
 import '../../widgets/primary_nav_bar.dart';
 import '../profile/profile_screen.dart';
 import '../search/search_screen.dart';
@@ -21,37 +21,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final PageController _pageController = PageController(initialPage: 1);
-  // bool _isSwipingLeft = false;
   int _selectedIndex = 0;
   bool _isFollowingSelected = false;
   bool _isLoading = false;
-  // bool _isProcessingPageChange = false;
-  // int _currentPage = 1;
 
   @override
   void initState() {
     super.initState();
     dev.log('HomeScreen initialized', name: 'HomeScreen');
-    // Initialize feed when screen loads
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      
-      if (widget.initialVideoId != null) {
-        dev.log('Loading initial video: ${widget.initialVideoId}', name: 'HomeScreen');
-        context.read<VideoFeedProvider>().loadSpecificVideo(widget.initialVideoId!);
-      } else {
-        dev.log('Loading next video', name: 'HomeScreen');
-        context.read<VideoFeedProvider>().loadNextVideo();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    dev.log('Disposing HomeScreen', name: 'HomeScreen');
-    _pageController.dispose();
-    super.dispose();
   }
 
   void _navigateToSearch() {
@@ -61,64 +38,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // Future<void> _onPageChanged(int page) async {
-  //   if (_isProcessingPageChange || !mounted) return;
-
-  //   try {
-  //     _isProcessingPageChange = true;
-  //     final provider = context.read<VideoFeedProvider>();
-      
-  //     // Get current video player key to find the widget
-  //     final currentVideoKey = provider.currentVideo != null ? 
-  //         ValueKey(provider.currentVideo!.id) : null;
-      
-  //     // Find the video player widget and trigger cleanup
-  //     if (currentVideoKey != null) {
-  //       dev.log('Starting preemptive cleanup before page change', name: 'HomeScreen');
-  //       // Set controller to non-ready state before cleanup
-  //       provider.setControllerReady(false);
-        
-  //       // Small delay to ensure UI updates
-  //       await Future.delayed(const Duration(milliseconds: 100));
-  //     }
-
-  //     if (!mounted) return;
-
-  //     if (page > _currentPage) {
-  //       dev.log('Loading next video', name: 'HomeScreen');
-  //       await provider.loadNextVideo();
-  //     } else if (page < _currentPage) {
-  //       dev.log('Loading previous video', name: 'HomeScreen');
-  //       await provider.loadPreviousVideo();
-  //     }
-
-  //     if (!mounted) return;
-      
-  //     setState(() {
-  //       _currentPage = page;
-  //     });
-
-  //     // Reset page controller after state is updated
-  //     if (_pageController.page != 0) {
-  //       await Future.delayed(const Duration(milliseconds: 100));
-  //       if (mounted) {
-  //         _pageController.jumpToPage(0);
-  //       }
-  //     }
-  //   } catch (e) {
-  //     dev.log('Error during page change: $e', name: 'HomeScreen', error: e);
-  //     if (mounted) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text('Error loading video')),
-  //       );
-  //     }
-  //   } finally {
-  //     if (mounted) {
-  //       _isProcessingPageChange = false;
-  //     }
-  //   }
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -132,78 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // Video Player with PageView
-            Consumer<VideoFeedProvider>(
-              builder: (context, provider, child) {
-                if (provider.isLoading || _isLoading) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  );
-                }
-
-                if (provider.error != null) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          provider.error!,
-                          style: const TextStyle(color: Colors.white),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => provider.loadNextVideo(),
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                if (provider.currentVideo == null) {
-                  return const Center(
-                    child: Text(
-                      'No videos available',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                }
-
-                return PageView(
-                  controller: _pageController,
-                  // onPageChanged: _onPageChanged,
-                  children: [
-                    // Previous page (for left swipe)
-                    Container(color: Colors.black),
-                    // Current video
-                    GestureDetector(
-                      // onHorizontalDragStart: (details) {
-                      //   // if (!provider.isLoading) {
-                      //   //   _isSwipingLeft = details.globalPosition.dx < MediaQuery.of(context).size.width / 2;
-                      //   // }
-                      //   dev.log('Horizontal drag started', name: 'HomeScreen');
-                      // },
-                      child: HLSVideoPlayer(
-                        key: ValueKey(provider.currentVideo!.id),
-                        videoUrl: provider.currentVideo!.videoUrl,
-                        videoId: provider.currentVideo!.id,
-                        autoplay: true,
-                        showControls: true,
-                        onVideoEnd: () {
-                          if (!provider.isLoading) {
-                            provider.loadNextVideo();
-                          }
-                        },
-                      ),
-                    ),
-                    // Next page (for right swipe)
-                    Container(color: Colors.black),
-                  ],
-                );
-              },
+            // Video Queue
+            VideoQueue(
+              queueSize: 3,
+              initialVideoId: widget.initialVideoId,
             ),
 
             // UI Overlay (Top)

@@ -22,6 +22,7 @@ class VideoFeedProvider with ChangeNotifier {
   WatchSession? _currentSession;
   Timer? _positionUpdateTimer;
   String? _currentVideoId;
+  Completer<void>? _initCompleter;
 
   VideoFeedProvider({
     VideoFeedService? feedService,
@@ -44,35 +45,66 @@ class VideoFeedProvider with ChangeNotifier {
   bool get hasPreviousVideo => _previousVideo != null;
   bool get hasLiked => _hasLiked;
 
+  Future<void> waitForInitialization() async {
+    if (_initCompleter != null) {
+      await _initCompleter!.future;
+    }
+  }
+
   Future<void> _initializeVideos() async {
-    _setLoading(true);
-    _setControllerReady(false);
+    dev.log('Starting _initializeVideos', name: 'VideoFeedProvider');
+    
+    // Create a new completer for initialization
+    _initCompleter = Completer<void>();
+    
     try {
+      _setLoading(true);
+      _setControllerReady(false);
+
       // Load first video
+      dev.log('Loading first video', name: 'VideoFeedProvider');
       _currentVideo = await _feedService.getNextVideo();
+      dev.log('Loaded first video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
       
       if (_currentVideo != null) {
         // Pre-fetch next video
+        dev.log('Pre-fetching next video', name: 'VideoFeedProvider');
         _nextVideo = await _feedService.getNextVideo();
+        dev.log('Pre-fetched next video: ${_nextVideo?.id}', name: 'VideoFeedProvider');
         _previousVideo = null;
+        _error = null;
+        
+        // Check like status for first video
+        await _checkLikeStatus();
       } else {
         _error = 'No videos available';
+        dev.log('No videos available', name: 'VideoFeedProvider');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      dev.log('Error loading videos', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
       _error = 'Error loading videos: $e';
     } finally {
       _setLoading(false);
+      dev.log('Finished _initializeVideos', name: 'VideoFeedProvider');
+      _initCompleter?.complete();
+      _initCompleter = null;
     }
   }
 
   Future<void> loadNextVideo() async {
+    dev.log('Starting loadNextVideo', name: 'VideoFeedProvider');
+    
+    // Wait for initialization to complete if it's still ongoing
+    await waitForInitialization();
+    
     if (_isLoading) {
-      dev.log('Skipping loadNextVideo - already loading', name: 'VideoFeedProvider');
+      dev.log('Already loading next video, waiting for completion', name: 'VideoFeedProvider');
       return;
     }
     
     _setLoading(true);
     _setControllerReady(false);
+    
     try {
       dev.log('Starting to load next video', name: 'VideoFeedProvider');
       
@@ -105,8 +137,8 @@ class VideoFeedProvider with ChangeNotifier {
       }
       
       dev.log('Successfully loaded next video', name: 'VideoFeedProvider');
-    } catch (e) {
-      dev.log('Error loading next video: $e', name: 'VideoFeedProvider', error: e);
+    } catch (e, stackTrace) {
+      dev.log('Error loading next video', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
       _error = 'Error loading next video: $e';
     } finally {
       _setLoading(false);
@@ -300,6 +332,23 @@ class VideoFeedProvider with ChangeNotifier {
         // Log other errors but don't crash the app
         debugPrint('Error updating watch position: $e');
       }
+    }
+  }
+
+  // Add cleanup method for video sessions
+  Future<void> cleanupVideoSession(String videoId) async {
+    dev.log('Cleaning up video session for videoId: $videoId', name: 'VideoFeedProvider');
+    try {
+      // Only cleanup if this is the current video
+      if (_currentVideoId == videoId) {
+        if (_currentSession != null) {
+          await endCurrentSession(false);
+        }
+        _currentVideoId = null;
+        setControllerReady(false);
+      }
+    } catch (e, stackTrace) {
+      dev.log('Error cleaning up video session', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
     }
   }
 

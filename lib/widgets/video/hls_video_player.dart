@@ -10,24 +10,40 @@ class HLSVideoPlayer extends StatefulWidget {
   final String videoId;
   final bool autoplay;
   final bool showControls;
+  final bool shouldPlay;
+  final bool isVisible;
+  final Function(bool)? onPlayingStateChanged;
   final VoidCallback? onVideoEnd;
   final VoidCallback? onError;
+  final GlobalKey<HLSVideoPlayerState> playerKey;
 
-  const HLSVideoPlayer({
+  HLSVideoPlayer({
     Key? key,
     required this.videoUrl,
     required this.videoId,
     this.autoplay = true,
     this.showControls = true,
+    this.shouldPlay = true,
+    this.isVisible = true,
+    this.onPlayingStateChanged,
     this.onVideoEnd,
     this.onError,
-  }) : super(key: key);
+  }) : playerKey = key as GlobalKey<HLSVideoPlayerState>? ?? GlobalKey<HLSVideoPlayerState>(),
+       super(key: key);
+
+  void pause() {
+    // This will be handled by the state
+  }
+
+  void updateState({required bool shouldPlay, required bool isVisible}) {
+    // This will be handled by the state
+  }
 
   @override
-  State<HLSVideoPlayer> createState() => _HLSVideoPlayerState();
+  State<HLSVideoPlayer> createState() => HLSVideoPlayerState();
 }
 
-class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
+class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isError = false;
@@ -37,51 +53,123 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
   double _dragProgress = 0.0;
   double _aspectRatio = 16 / 9;
   Timer? _positionUpdateTimer;
+  bool _shouldBeVisible = true;
+  bool _shouldBePlaying = true;
+  late VideoFeedProvider _videoFeedProvider;
+  Completer<void>? _initializationCompleter;
+
+  Future<void> waitForInitialization() async {
+    if (_initializationCompleter != null) {
+      await _initializationCompleter!.future;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    dev.log('HLSVideoPlayer initState - videoId: ${widget.videoId}, videoUrl: ${widget.videoUrl}', name: 'HLSVideoPlayer');
+    dev.log('Initial state - shouldPlay: ${widget.shouldPlay}, isVisible: ${widget.isVisible}, autoplay: ${widget.autoplay}', name: 'HLSVideoPlayer');
+    _shouldBeVisible = widget.isVisible;
+    _shouldBePlaying = widget.shouldPlay;
+    _videoFeedProvider = context.read<VideoFeedProvider>();
     _initializePlayer();
   }
 
   Future<void> _initializePlayer() async {
+    dev.log('Starting player initialization - videoId: ${widget.videoId}, videoUrl: ${widget.videoUrl}', name: 'HLSVideoPlayer');
+    _initializationCompleter = Completer<void>();
+    
     try {
-      _controller = VideoPlayerController.network(
-        widget.videoUrl,
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false,
-        ),
-      );
+      dev.log('Creating controller for URL: ${widget.videoUrl}', name: 'HLSVideoPlayer');
+      try {
+        _controller = VideoPlayerController.network(
+          widget.videoUrl,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false,
+          ),
+        );
+        dev.log('Successfully created video controller', name: 'HLSVideoPlayer');
+      } catch (e, stackTrace) {
+        dev.log('Error creating video controller', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+        _initializationCompleter?.completeError(e);
+        rethrow;
+      }
 
-      await _controller.initialize();
+      dev.log('Initializing controller', name: 'HLSVideoPlayer');
+      try {
+        await _controller.initialize();
+        dev.log('Controller initialized successfully', name: 'HLSVideoPlayer');
+      } catch (e, stackTrace) {
+        dev.log('Error initializing controller', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+        _initializationCompleter?.completeError(e);
+        rethrow;
+      }
       
+      if (!mounted) {
+        dev.log('Widget not mounted after initialization', name: 'HLSVideoPlayer');
+        _initializationCompleter?.completeError('Widget not mounted');
+        return;
+      }
+
       setState(() {
         _isInitialized = true;
         _aspectRatio = _controller.value.aspectRatio;
       });
+      dev.log('State updated after initialization', name: 'HLSVideoPlayer');
 
       // Notify provider that controller is ready
-      if (context.mounted) {
-        context.read<VideoFeedProvider>().setControllerReady(true);
+      if (mounted) {
+        dev.log('Setting controller ready state', name: 'HLSVideoPlayer');
+        try {
+          _videoFeedProvider.setControllerReady(true);
+          dev.log('Controller ready state set successfully', name: 'HLSVideoPlayer');
+        } catch (e, stackTrace) {
+          dev.log('Error setting controller ready state', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+          _initializationCompleter?.completeError(e);
+          return;
+        }
       }
 
       // Start watch session and position updates
-      final provider = context.read<VideoFeedProvider>();
-      await provider.onVideoStarted(widget.videoId);
-      _startPositionUpdates();
+      if (mounted) {
+        dev.log('Starting watch session', name: 'HLSVideoPlayer');
+        try {
+          await _videoFeedProvider.onVideoStarted(widget.videoId);
+          _startPositionUpdates();
+          dev.log('Watch session started successfully', name: 'HLSVideoPlayer');
+        } catch (e, stackTrace) {
+          dev.log('Error starting watch session', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+          _initializationCompleter?.completeError(e);
+          return;
+        }
+      }
 
       // Listen for video completion
       _controller.addListener(_onVideoProgress);
 
-      // Start playing immediately if autoplay is true
-      if (widget.autoplay && mounted) {
-        await _controller.play();
+      // Start playing if shouldPlay is true
+      if (_shouldBePlaying && mounted) {
+        dev.log('Starting playback - shouldPlay: $_shouldBePlaying', name: 'HLSVideoPlayer');
+        try {
+          await _controller.play();
+          dev.log('Playback started successfully', name: 'HLSVideoPlayer');
+          widget.onPlayingStateChanged?.call(true);
+        } catch (e, stackTrace) {
+          dev.log('Error starting playback', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+          // Don't complete with error here as initialization is technically successful
+        }
+      } else {
+        dev.log('Not starting playback - shouldPlay: $_shouldBePlaying', name: 'HLSVideoPlayer');
       }
 
-    } catch (e) {
-      setState(() => _isError = true);
-      widget.onError?.call();
-      print('Error initializing video player: $e');
+      _initializationCompleter?.complete();
+    } catch (e, stackTrace) {
+      dev.log('Error initializing video player: $e', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+      if (mounted) {
+        setState(() => _isError = true);
+        widget.onError?.call();
+      }
+      _initializationCompleter?.completeError(e);
     }
   }
 
@@ -89,28 +177,39 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
     _positionUpdateTimer?.cancel();
     _positionUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_controller.value.isPlaying) {
-        final provider = context.read<VideoFeedProvider>();
-        provider.updateWatchPosition(_controller.value.position);
+        _videoFeedProvider.updateWatchPosition(_controller.value.position);
       }
     });
   }
 
   void _onVideoProgress() {
-    if (_controller.value.position >= _controller.value.duration) {
-      final provider = context.read<VideoFeedProvider>();
-      provider.onVideoEnded();
-      widget.onVideoEnd?.call();
-    }
+    try {
+      if (!mounted || !_controller.value.isInitialized) return;
 
-    // Update buffering state
-    final bool isBuffering = _controller.value.isBuffering;
-    if (_isBuffering != isBuffering) {
-      setState(() => _isBuffering = isBuffering);
-    }
+      if (_controller.value.hasError) {
+        dev.log('Video controller reported error', name: 'HLSVideoPlayer', error: _controller.value.errorDescription);
+        return;
+      }
 
-    // Force rebuild to update progress bar position
-    if (mounted && !_isDragging) {
-      setState(() {});
+      if (_controller.value.position >= _controller.value.duration) {
+        dev.log('Video reached end', name: 'HLSVideoPlayer');
+        _videoFeedProvider.onVideoEnded();
+        widget.onVideoEnd?.call();
+      }
+
+      // Update buffering state
+      final bool isBuffering = _controller.value.isBuffering;
+      if (_isBuffering != isBuffering) {
+        dev.log('Buffering state changed to: $isBuffering', name: 'HLSVideoPlayer');
+        setState(() => _isBuffering = isBuffering);
+      }
+
+      // Force rebuild to update progress bar position
+      if (mounted && !_isDragging) {
+        setState(() {});
+      }
+    } catch (e, stackTrace) {
+      dev.log('Error in video progress callback', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
     }
   }
 
@@ -127,12 +226,6 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
       // Cancel any pending operations
       _controller.removeListener(_onVideoProgress);
       
-      // Ensure position is saved before cleanup
-      if (mounted && _controller.value.isInitialized) {
-        final provider = context.read<VideoFeedProvider>();
-        provider.updateWatchPosition(_controller.value.position);
-      }
-      
       dev.log('Video player resources cleaned up', name: 'HLSVideoPlayer');
     } catch (e) {
       dev.log('Error during cleanup: $e', name: 'HLSVideoPlayer', error: e);
@@ -140,54 +233,62 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   @override
+  void deactivate() {
+    dev.log('Deactivating video player', name: 'HLSVideoPlayer');
+    // Handle provider state reset here instead of in dispose
+    try {
+      _videoFeedProvider.setControllerReady(false);
+      _videoFeedProvider.cleanupVideoSession(widget.videoId);
+    } catch (e, stackTrace) {
+      dev.log('Error during deactivation cleanup', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+    }
+    _cleanupResources();
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
-    dev.log('Disposing video player', name: 'HLSVideoPlayer');
+    dev.log('Disposing HLSVideoPlayer - videoId: ${widget.videoId}', name: 'HLSVideoPlayer');
     _positionUpdateTimer?.cancel();
     _controller.removeListener(_onVideoProgress);
     
-    // Ensure we pause before disposing to prevent surface issues
     try {
       if (_controller.value.isPlaying) {
+        dev.log('Pausing video before disposal', name: 'HLSVideoPlayer');
         _controller.pause();
       }
       
-      // Reset controller ready state when disposing
-      if (mounted) {
-        try {
-          context.read<VideoFeedProvider>().setControllerReady(false);
-        } catch (e) {
-          dev.log('Error resetting controller state: $e', name: 'HLSVideoPlayer');
-        }
-      }
-
-      // Ensure proper cleanup sequence
+      dev.log('Disposing video controller', name: 'HLSVideoPlayer');
       _controller.dispose();
-    } catch (e) {
-      dev.log('Error disposing video controller: $e', name: 'HLSVideoPlayer');
+    } catch (e, stackTrace) {
+      dev.log('Error during disposal', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
     }
     
     super.dispose();
   }
 
   @override
-  void deactivate() {
-    dev.log('Deactivating video player', name: 'HLSVideoPlayer');
-    _cleanupResources();
-    super.deactivate();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    dev.log('Building HLSVideoPlayer - videoId: ${widget.videoId}, initialized: $_isInitialized, error: $_isError, shouldBeVisible: $_shouldBeVisible', name: 'HLSVideoPlayer');
+    
+    if (!_shouldBeVisible) {
+      dev.log('Returning empty container - player not visible', name: 'HLSVideoPlayer');
+      return const SizedBox.shrink();
+    }
+
     if (!_isInitialized) {
+      dev.log('Returning loading indicator - player not initialized', name: 'HLSVideoPlayer');
       return const Center(child: CircularProgressIndicator());
     }
 
     if (_isError) {
+      dev.log('Returning error indicator - player in error state', name: 'HLSVideoPlayer');
       return const Center(
         child: Icon(Icons.error_outline, color: Colors.red, size: 48),
       );
     }
 
+    dev.log('Building full video player UI', name: 'HLSVideoPlayer');
     return GestureDetector(
       onTap: () {
         setState(() => _showControls = !_showControls);
@@ -199,14 +300,12 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
             VideoPlayer(_controller),
             if (_isBuffering)
               const Center(child: CircularProgressIndicator()),
-            // Always show progress bar at the bottom
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               child: _buildProgressBar(),
             ),
-            // Show controls overlay when _showControls is true
             if (_showControls && widget.showControls)
               _buildControls(),
           ],
@@ -343,6 +442,73 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
       //   _controller.play();
       // },
     );
+  }
+
+  @override
+  void didUpdateWidget(HLSVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    dev.log('didUpdateWidget called - videoId: ${widget.videoId}, old videoId: ${oldWidget.videoId}', name: 'HLSVideoPlayer');
+    dev.log('State changes - shouldPlay: ${oldWidget.shouldPlay} -> ${widget.shouldPlay}, isVisible: ${oldWidget.isVisible} -> ${widget.isVisible}', name: 'HLSVideoPlayer');
+    
+    if (widget.videoUrl != oldWidget.videoUrl) {
+      dev.log('Video URL changed - reinitializing player', name: 'HLSVideoPlayer');
+      _cleanupResources();
+      _initializePlayer();
+      return;
+    }
+
+    if (widget.shouldPlay != oldWidget.shouldPlay) {
+      dev.log('shouldPlay changed from ${oldWidget.shouldPlay} to ${widget.shouldPlay}', name: 'HLSVideoPlayer');
+      _shouldBePlaying = widget.shouldPlay;
+      if (_shouldBePlaying && _isInitialized) {
+        dev.log('Playing video', name: 'HLSVideoPlayer');
+        _controller.play();
+        widget.onPlayingStateChanged?.call(true);
+      } else if (!_shouldBePlaying && _isInitialized) {
+        dev.log('Pausing video', name: 'HLSVideoPlayer');
+        _controller.pause();
+        widget.onPlayingStateChanged?.call(false);
+      }
+    }
+
+    if (widget.isVisible != oldWidget.isVisible) {
+      dev.log('isVisible changed from ${oldWidget.isVisible} to ${widget.isVisible}', name: 'HLSVideoPlayer');
+      _shouldBeVisible = widget.isVisible;
+      if (!_shouldBeVisible && _isInitialized && _controller.value.isPlaying) {
+        dev.log('Pausing video due to visibility change', name: 'HLSVideoPlayer');
+        _controller.pause();
+        widget.onPlayingStateChanged?.call(false);
+      }
+    }
+  }
+
+  void updateState({required bool shouldPlay, required bool isVisible}) {
+    if (!mounted) return;
+    
+    dev.log('Updating state - shouldPlay: $shouldPlay, isVisible: $isVisible', name: 'HLSVideoPlayer');
+    _shouldBeVisible = isVisible;
+    if (shouldPlay != _shouldBePlaying) {
+      _shouldBePlaying = shouldPlay;
+      if (_isInitialized) {
+        if (_shouldBePlaying) {
+          dev.log('Playing video from updateState', name: 'HLSVideoPlayer');
+          _controller.play();
+          widget.onPlayingStateChanged?.call(true);
+        } else {
+          dev.log('Pausing video from updateState', name: 'HLSVideoPlayer');
+          _controller.pause();
+          widget.onPlayingStateChanged?.call(false);
+        }
+      }
+    }
+  }
+
+  void pause() {
+    if (_controller.value.isPlaying) {
+      _controller.pause();
+      _shouldBePlaying = false;
+      widget.onPlayingStateChanged?.call(false);
+    }
   }
 }
 
