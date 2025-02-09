@@ -5,6 +5,7 @@ import '../repositories/video_repository.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'dart:developer' as dev;
 
 class VideoFeedProvider with ChangeNotifier {
   final VideoFeedService _feedService;
@@ -66,12 +67,20 @@ class VideoFeedProvider with ChangeNotifier {
 
   Future<void> loadNextVideo() async {
     if (_isLoading) {
+      dev.log('Skipping loadNextVideo - already loading', name: 'VideoFeedProvider');
       return;
     }
     
     _setLoading(true);
     _setControllerReady(false);
     try {
+      dev.log('Starting to load next video', name: 'VideoFeedProvider');
+      
+      // Ensure current session is ended
+      if (_currentSession != null) {
+        await endCurrentSession(false);
+      }
+
       // Store current video as previous
       if (_currentVideo != null) {
         _previousVideo = _currentVideo;
@@ -94,7 +103,10 @@ class VideoFeedProvider with ChangeNotifier {
         _error = null;
         await _checkLikeStatus();
       }
+      
+      dev.log('Successfully loaded next video', name: 'VideoFeedProvider');
     } catch (e) {
+      dev.log('Error loading next video: $e', name: 'VideoFeedProvider', error: e);
       _error = 'Error loading next video: $e';
     } finally {
       _setLoading(false);
@@ -155,6 +167,13 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   void setControllerReady(bool ready) {
+    dev.log('Setting controller ready state to: $ready', name: 'VideoFeedProvider');
+    if (!ready && _currentSession != null) {
+      // Ensure we cleanup any existing session when controller becomes not ready
+      endCurrentSession(false).catchError((e) {
+        dev.log('Error ending session: $e', name: 'VideoFeedProvider', error: e);
+      });
+    }
     _setControllerReady(ready);
   }
 
@@ -173,8 +192,10 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   void _setControllerReady(bool ready) {
-    _isControllerReady = ready;
-    notifyListeners();
+    if (_isControllerReady != ready) {
+      _isControllerReady = ready;
+      notifyListeners();
+    }
   }
 
   void setFeedType(String type) {
@@ -222,16 +243,30 @@ class VideoFeedProvider with ChangeNotifier {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    _currentVideoId = videoId;
-    await _videoRepository.addToWatchHistory(videoId, user.uid);
-    await startWatchSession();
+    try {
+      _currentVideoId = videoId;
+      // Ensure watch history entry exists
+      await _videoRepository.addToWatchHistory(videoId, user.uid);
+      // Start the watch session
+      _currentSession = await _videoRepository.startWatchSession(videoId, user.uid);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error starting video session: $e');
+      // Even if session creation fails, don't crash the app
+      _currentVideoId = videoId;
+    }
   }
 
   Future<void> onVideoEnded() async {
-    if (_currentSession != null) {
-      await endCurrentSession(true);
+    try {
+      if (_currentSession != null) {
+        await endCurrentSession(true);
+      }
+    } catch (e) {
+      debugPrint('Error ending video session: $e');
+    } finally {
+      _currentVideoId = null;
     }
-    _currentVideoId = null;
   }
 
   Future<void> updateWatchPosition(Duration position) async {
@@ -240,11 +275,32 @@ class VideoFeedProvider with ChangeNotifier {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    await _videoRepository.updateWatchHistoryEntry(
-      _currentSession!.id,
-      watchDuration: position.inSeconds,
-      completed: false,
-    );
+    try {
+      await _videoRepository.updateWatchHistoryEntry(
+        _currentSession!.id,
+        watchDuration: position.inSeconds,
+        completed: false,
+      );
+    } catch (e) {
+      if (e.toString().contains('not-found')) {
+        // If the watch history entry doesn't exist, create a new one
+        try {
+          await _videoRepository.addToWatchHistory(_currentVideoId!, user.uid);
+          // Retry the update after creating the entry
+          await _videoRepository.updateWatchHistoryEntry(
+            _currentSession!.id,
+            watchDuration: position.inSeconds,
+            completed: false,
+          );
+        } catch (retryError) {
+          // Log error but don't crash the app
+          debugPrint('Error creating/updating watch history: $retryError');
+        }
+      } else {
+        // Log other errors but don't crash the app
+        debugPrint('Error updating watch position: $e');
+      }
+    }
   }
 
   Stream<QuerySnapshot> getWatchHistory({

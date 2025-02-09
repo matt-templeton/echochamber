@@ -6,6 +6,7 @@ import '../../widgets/primary_nav_bar.dart';
 import '../profile/profile_screen.dart';
 import '../search/search_screen.dart';
 import '../../utils/number_formatter.dart';
+import 'dart:developer' as dev;
 
 class HomeScreen extends StatefulWidget {
   final String? initialVideoId;
@@ -25,15 +26,22 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   bool _isFollowingSelected = false;
   bool _isLoading = false;
+  bool _isProcessingPageChange = false;
+  int _currentPage = 1;
 
   @override
   void initState() {
     super.initState();
+    dev.log('HomeScreen initialized', name: 'HomeScreen');
     // Initialize feed when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
       if (widget.initialVideoId != null) {
+        dev.log('Loading initial video: ${widget.initialVideoId}', name: 'HomeScreen');
         context.read<VideoFeedProvider>().loadSpecificVideo(widget.initialVideoId!);
       } else {
+        dev.log('Loading next video', name: 'HomeScreen');
         context.read<VideoFeedProvider>().loadNextVideo();
       }
     });
@@ -41,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    dev.log('Disposing HomeScreen', name: 'HomeScreen');
     _pageController.dispose();
     super.dispose();
   }
@@ -53,50 +62,62 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _onPageChanged(int page) {
-    if (!mounted) return;
-    
-    final provider = context.read<VideoFeedProvider>();
-    if (provider.isLoading) {
-      // If still loading, snap back to current video
-      _pageController.animateToPage(
-        1,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-      return;
-    }
+  Future<void> _onPageChanged(int page) async {
+    if (_isProcessingPageChange || !mounted) return;
 
-    if (_isSwipingLeft) {
-      // Swiping left (going back)
-      if (provider.hasPreviousVideo) {
-        provider.loadPreviousVideo();
+    try {
+      _isProcessingPageChange = true;
+      final provider = context.read<VideoFeedProvider>();
+      
+      // Get current video player key to find the widget
+      final currentVideoKey = provider.currentVideo != null ? 
+          ValueKey(provider.currentVideo!.id) : null;
+      
+      // Find the video player widget and trigger cleanup
+      if (currentVideoKey != null) {
+        dev.log('Starting preemptive cleanup before page change', name: 'HomeScreen');
+        // Set controller to non-ready state before cleanup
+        provider.setControllerReady(false);
+        
+        // Small delay to ensure UI updates
+        await Future.delayed(const Duration(milliseconds: 100));
       }
-    } else {
-      // Swiping right (going forward)
-      if (provider.nextVideo != null) {
-        provider.loadNextVideo();
-      } else {
-        // If no next video available yet, show loading
-        setState(() {
-          _isLoading = true;
-        });
-        provider.loadNextVideo().then((_) {
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-          }
-        });
+
+      if (!mounted) return;
+
+      if (page > _currentPage) {
+        dev.log('Loading next video', name: 'HomeScreen');
+        await provider.loadNextVideo();
+      } else if (page < _currentPage) {
+        dev.log('Loading previous video', name: 'HomeScreen');
+        await provider.loadPreviousVideo();
+      }
+
+      if (!mounted) return;
+      
+      setState(() {
+        _currentPage = page;
+      });
+
+      // Reset page controller after state is updated
+      if (_pageController.page != 0) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          _pageController.jumpToPage(0);
+        }
+      }
+    } catch (e) {
+      dev.log('Error during page change: $e', name: 'HomeScreen', error: e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading video')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        _isProcessingPageChange = false;
       }
     }
-    
-    // Reset page to center after state is updated
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _pageController.jumpToPage(1);
-      }
-    });
   }
 
   @override

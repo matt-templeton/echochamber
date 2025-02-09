@@ -6,6 +6,7 @@ import '../../models/video_model.dart';
 import '../../providers/video_feed_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
+import 'dart:developer' as dev;
 
 class HLSVideoPlayer extends StatefulWidget {
   final String videoUrl;
@@ -116,16 +117,66 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> {
     }
   }
 
+  void _cleanupResources() {
+    dev.log('Cleaning up video player resources', name: 'HLSVideoPlayer');
+    _positionUpdateTimer?.cancel();
+    
+    try {
+      // Ensure we stop playback first
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      }
+      
+      // Cancel any pending operations
+      _controller.removeListener(_onVideoProgress);
+      
+      // Ensure position is saved before cleanup
+      if (mounted && _controller.value.isInitialized) {
+        final provider = context.read<VideoFeedProvider>();
+        provider.updateWatchPosition(_controller.value.position);
+      }
+      
+      dev.log('Video player resources cleaned up', name: 'HLSVideoPlayer');
+    } catch (e) {
+      dev.log('Error during cleanup: $e', name: 'HLSVideoPlayer', error: e);
+    }
+  }
+
   @override
   void dispose() {
+    dev.log('Disposing video player', name: 'HLSVideoPlayer');
     _positionUpdateTimer?.cancel();
     _controller.removeListener(_onVideoProgress);
-    _controller.dispose();
-    // Reset controller ready state when disposing
-    if (context.mounted) {
-      context.read<VideoFeedProvider>().setControllerReady(false);
+    
+    // Ensure we pause before disposing to prevent surface issues
+    try {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      }
+      
+      // Reset controller ready state when disposing
+      if (mounted) {
+        try {
+          context.read<VideoFeedProvider>().setControllerReady(false);
+        } catch (e) {
+          dev.log('Error resetting controller state: $e', name: 'HLSVideoPlayer');
+        }
+      }
+
+      // Ensure proper cleanup sequence
+      _controller.dispose();
+    } catch (e) {
+      dev.log('Error disposing video controller: $e', name: 'HLSVideoPlayer');
     }
+    
     super.dispose();
+  }
+
+  @override
+  void deactivate() {
+    dev.log('Deactivating video player', name: 'HLSVideoPlayer');
+    _cleanupResources();
+    super.deactivate();
   }
 
   @override

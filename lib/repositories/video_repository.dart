@@ -299,26 +299,32 @@ class VideoRepository {
   Future<WatchSession> startWatchSession(String videoId, String userId) async {
     final batch = _firestore.batch();
     
-    // Create new watch session
-    final sessionRef = _firestore.collection(_watchSessionsCollection).doc();
-    final session = WatchSession(
-      id: sessionRef.id,
-      videoId: videoId,
-      userId: userId,
-      startTime: DateTime.now(),
-    );
-    
-    batch.set(sessionRef, session.toFirestore());
+    try {
+      // Create new watch session with a known ID based on videoId and userId
+      final sessionId = '${videoId}_${userId}_${DateTime.now().millisecondsSinceEpoch}';
+      final sessionRef = _firestore.collection(_watchSessionsCollection).doc(sessionId);
+      final session = WatchSession(
+        id: sessionId,
+        videoId: videoId,
+        userId: userId,
+        startTime: DateTime.now(),
+      );
+      
+      batch.set(sessionRef, session.toFirestore());
 
-    // Update video's view count
-    final videoRef = _firestore.collection(_collection).doc(videoId);
-    batch.update(videoRef, {
-      'viewsCount': FieldValue.increment(1),
-      'lastWatchedAt': FieldValue.serverTimestamp(),
-    });
+      // Update video's view count
+      final videoRef = _firestore.collection(_collection).doc(videoId);
+      batch.update(videoRef, {
+        'viewsCount': FieldValue.increment(1),
+        'lastWatchedAt': FieldValue.serverTimestamp(),
+      });
 
-    await batch.commit();
-    return session;
+      await batch.commit();
+      return session;
+    } catch (e) {
+      print('Error in startWatchSession: $e');
+      rethrow;
+    }
   }
 
   Future<void> updateWatchSession(String sessionId, {
@@ -387,62 +393,87 @@ class VideoRepository {
   }
 
   // Watch History Methods
-  Future<void> addToWatchHistory(String videoId, String userId) async {
+  Future<String> addToWatchHistory(String videoId, String userId) async {
     final video = await getVideoById(videoId);
-    if (video == null) return;
+    if (video == null) return '';
 
     final batch = _firestore.batch();
     
-    // Check for existing entry
-    final existingEntry = await _firestore
-        .collection(_watchHistoryCollection)
-        .where('videoId', isEqualTo: videoId)
-        .where('userId', isEqualTo: userId)
-        .limit(1)
-        .get();
+    try {
+      // Check for existing entry
+      final existingEntryQuery = await _firestore
+          .collection(_watchHistoryCollection)
+          .where('videoId', isEqualTo: videoId)
+          .where('userId', isEqualTo: userId)
+          .limit(1)
+          .get();
 
-    final now = DateTime.now();
-    final videoMetadata = VideoMetadata.fromVideo(video);
+      final now = DateTime.now();
+      final videoMetadata = VideoMetadata.fromVideo(video);
 
-    if (existingEntry.docs.isEmpty) {
-      // Create new entry
-      final entryRef = _firestore.collection(_watchHistoryCollection).doc();
-      final entry = WatchHistoryEntry(
-        id: entryRef.id,
-        videoId: videoId,
-        userId: userId,
-        watchedAt: now,
-        watchDuration: 0,
-        videoMetadata: videoMetadata,
-      );
-      
-      batch.set(entryRef, entry.toFirestore());
-    } else {
-      // Update existing entry
-      final entryRef = existingEntry.docs.first.reference;
-      batch.update(entryRef, {
-        'watchedAt': Timestamp.fromDate(now),
-        'videoMetadata': videoMetadata.toMap(),
-      });
+      String entryId;
+      if (existingEntryQuery.docs.isEmpty) {
+        // Create new entry with a known ID based on videoId and userId
+        entryId = '${videoId}_${userId}';
+        final entryRef = _firestore.collection(_watchHistoryCollection).doc(entryId);
+        final entry = WatchHistoryEntry(
+          id: entryId,
+          videoId: videoId,
+          userId: userId,
+          watchedAt: now,
+          watchDuration: 0,
+          videoMetadata: videoMetadata,
+        );
+        
+        batch.set(entryRef, entry.toFirestore());
+      } else {
+        // Update existing entry
+        final entryRef = existingEntryQuery.docs.first.reference;
+        entryId = existingEntryQuery.docs.first.id;
+        batch.update(entryRef, {
+          'watchedAt': Timestamp.fromDate(now),
+          'videoMetadata': videoMetadata.toMap(),
+        });
+      }
+
+      await batch.commit();
+      await _cleanupOldEntries(userId);
+      return entryId;
+    } catch (e) {
+      print('Error in addToWatchHistory: $e');
+      rethrow;
     }
-
-    await batch.commit();
-    await _cleanupOldEntries(userId);
   }
 
   Future<void> updateWatchHistoryEntry(String entryId, {
     int? watchDuration,
     bool? completed,
   }) async {
-    final updates = <String, dynamic>{};
-    
-    if (watchDuration != null) updates['watchDuration'] = watchDuration;
-    if (completed != null) updates['completed'] = completed;
-    
-    await _firestore
-        .collection(_watchHistoryCollection)
-        .doc(entryId)
-        .update(updates);
+    try {
+      final entryRef = _firestore.collection(_watchHistoryCollection).doc(entryId);
+      
+      // First check if the document exists
+      final docSnapshot = await entryRef.get();
+      if (!docSnapshot.exists) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'not-found',
+          message: 'Watch history entry not found'
+        );
+      }
+
+      final updates = <String, dynamic>{
+        'lastUpdated': FieldValue.serverTimestamp(),
+      };
+      
+      if (watchDuration != null) updates['watchDuration'] = watchDuration;
+      if (completed != null) updates['completed'] = completed;
+      
+      await entryRef.update(updates);
+    } catch (e) {
+      print('Error in updateWatchHistoryEntry: $e');
+      rethrow;
+    }
   }
 
   Future<void> deleteWatchHistoryEntry(String entryId) async {
