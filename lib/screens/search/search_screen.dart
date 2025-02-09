@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/search/search_filters_sheet.dart';
 import '../../repositories/video_repository.dart';
 import '../../models/video_model.dart';
@@ -15,19 +16,108 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final VideoRepository _repository = VideoRepository();
+  final ScrollController _scrollController = ScrollController();
   Timer? _debounceTimer;
   
   List<String>? _selectedGenres;
   List<String>? _selectedTags;
-  List<Video>? _searchResults;
+  List<Video> _videos = [];
   bool _isLoading = false;
+  bool _hasMore = true;
   String? _error;
+  DocumentSnapshot? _lastDocument;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialVideos();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreVideos();
+    }
+  }
+
+  Future<void> _loadInitialVideos() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final snapshot = await _repository.getTrendingVideos(limit: 20).first;
+      if (mounted) {
+        setState(() {
+          _videos = snapshot.docs.map((doc) => Video.fromFirestore(doc)).toList();
+          if (snapshot.docs.isNotEmpty) {
+            _lastDocument = snapshot.docs.last;
+          }
+          _hasMore = snapshot.docs.length == 20;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load videos: ${e.toString()}';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoreVideos() async {
+    if (_isLoading || !_hasMore) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final query = _searchController.text.isEmpty
+          ? await _repository.getTrendingVideos(limit: 20).first
+          : await _repository.searchVideos(
+              searchQuery: _searchController.text,
+              genres: _selectedGenres,
+              tags: _selectedTags,
+              limit: 20,
+              startAfter: _lastDocument,
+            );
+
+      if (mounted) {
+        setState(() {
+          if (query is QuerySnapshot) {
+            final newVideos = query.docs.map((doc) => Video.fromFirestore(doc)).toList();
+            _videos.addAll(newVideos);
+            if (query.docs.isNotEmpty) {
+              _lastDocument = query.docs.last;
+            }
+            _hasMore = query.docs.length == 20;
+          } else if (query is List<Video>) {
+            _videos.addAll(query);
+            _hasMore = query.length == 20;
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load more videos: ${e.toString()}';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _showFiltersSheet() async {
@@ -53,19 +143,28 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _videos.clear();
+      _lastDocument = null;
     });
 
     try {
+      if (_searchController.text.isEmpty && _selectedGenres == null && _selectedTags == null) {
+        await _loadInitialVideos();
+        return;
+      }
+
       final results = await _repository.searchVideos(
         searchQuery: _searchController.text,
         genres: _selectedGenres,
         tags: _selectedTags,
+        limit: 20,
       );
 
       if (mounted) {
         setState(() {
-          _searchResults = results;
+          _videos = results;
           _isLoading = false;
+          _hasMore = results.length == 20;
         });
       }
     } catch (e) {
@@ -152,34 +251,40 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _searchController.text.isEmpty ? _loadInitialVideos : _performSearch,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_videos.isEmpty && _isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
-    if (_error != null) {
-      return Center(
-        child: Text(
-          _error!,
-          style: const TextStyle(color: Colors.red),
-        ),
-      );
-    }
-
-    if (_searchResults == null) {
+    if (_videos.isEmpty) {
       return const Center(
-        child: Text('Start typing to search...'),
-      );
-    }
-
-    if (_searchResults!.isEmpty) {
-      return const Center(
-        child: Text('No results found'),
+        child: Text('No videos found'),
       );
     }
 
     return GridView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
@@ -187,9 +292,18 @@ class _SearchScreenState extends State<SearchScreen> {
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
-      itemCount: _searchResults!.length,
+      itemCount: _videos.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
-        final video = _searchResults![index];
+        if (index == _videos.length) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final video = _videos[index];
         return InkWell(
           onTap: () {
             Navigator.of(context).pushReplacement(

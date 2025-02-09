@@ -17,6 +17,7 @@ class VideoFeedProvider with ChangeNotifier {
   bool _isControllerReady = false;
   String? _error;
   String _feedType = 'for_you'; // Default feed type
+  bool _hasLiked = false;
   WatchSession? _currentSession;
   Timer? _positionUpdateTimer;
   String? _currentVideoId;
@@ -40,6 +41,7 @@ class VideoFeedProvider with ChangeNotifier {
   String get feedType => _feedType;
   WatchSession? get currentSession => _currentSession;
   bool get hasPreviousVideo => _previousVideo != null;
+  bool get hasLiked => _hasLiked;
 
   Future<void> _initializeVideos() async {
     _setLoading(true);
@@ -90,6 +92,7 @@ class VideoFeedProvider with ChangeNotifier {
         _error = 'No more videos available';
       } else {
         _error = null;
+        await _checkLikeStatus();
       }
     } catch (e) {
       _error = 'Error loading next video: $e';
@@ -116,6 +119,7 @@ class VideoFeedProvider with ChangeNotifier {
       _previousVideo = null;
       
       _error = null;
+      await _checkLikeStatus();
     } catch (e) {
       _error = 'Error loading previous video: $e';
     } finally {
@@ -141,6 +145,7 @@ class VideoFeedProvider with ChangeNotifier {
         _error = 'Video not found';
       } else {
         _error = null;
+        await _checkLikeStatus();
       }
     } catch (e) {
       _error = 'Error loading video: $e';
@@ -269,6 +274,47 @@ class VideoFeedProvider with ChangeNotifier {
   Future<void> removeFromHistory(String entryId) async {
     await _videoRepository.deleteWatchHistoryEntry(entryId);
     notifyListeners();
+  }
+
+  Future<void> _checkLikeStatus() async {
+    if (_currentVideo == null || _auth.currentUser == null) {
+      _hasLiked = false;
+      return;
+    }
+    
+    try {
+      _hasLiked = await _videoRepository.hasUserLikedVideo(
+        _currentVideo!.id,
+        _auth.currentUser!.uid,
+      );
+      notifyListeners();
+    } catch (e) {
+      // Handle error silently
+      _hasLiked = false;
+    }
+  }
+
+  Future<void> toggleLike() async {
+    if (_currentVideo == null || _auth.currentUser == null) return;
+
+    try {
+      if (_hasLiked) {
+        await _videoRepository.unlikeVideo(_currentVideo!.id, _auth.currentUser!.uid);
+        _hasLiked = false;
+        _currentVideo = _currentVideo!.copyWith(
+          likesCount: _currentVideo!.likesCount - 1
+        );
+      } else {
+        await _videoRepository.likeVideo(_currentVideo!.id, _auth.currentUser!.uid);
+        _hasLiked = true;
+        _currentVideo = _currentVideo!.copyWith(
+          likesCount: _currentVideo!.likesCount + 1
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      // Handle error silently
+    }
   }
 
   @override
