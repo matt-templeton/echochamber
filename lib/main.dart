@@ -26,6 +26,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        Provider<FirebaseAuth>(
+          create: (_) => FirebaseAuth.instance,
+        ),
         Provider<AuthService>(
           create: (_) => AuthService(),
         ),
@@ -33,8 +36,8 @@ class MyApp extends StatelessWidget {
           create: (context) => context.read<AuthService>().authStateChanges,
           initialData: null,
         ),
-        ChangeNotifierProvider(
-          create: (_) => VideoFeedProvider(),
+        ChangeNotifierProvider.value(
+          value: VideoFeedProvider()..setEnabled(false),
         ),
       ],
       child: MaterialApp(

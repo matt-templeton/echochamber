@@ -69,6 +69,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _showControls = false;
   bool _isDragging = false;
   bool _wasPlayingBeforeDrag = false;
+  bool _isDisposed = false;
   double _aspectRatio = 16 / 9;
   Timer? _bufferCheckTimer;
   final _initializationCompleter = Completer<void>();
@@ -155,6 +156,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   void _onVideoProgress() {
+    if (_isDisposed) return;
     if (!mounted || !_controller.value.isInitialized) return;
 
     if (_controller.value.hasError) {
@@ -167,19 +169,82 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (_controller.value.position >= _controller.value.duration) {
       dev.log('Video reached end', name: 'HLSVideoPlayer');
       widget.onVideoEnd?.call();
+      
+      // Reset video position to beginning
+      _controller.seekTo(Duration.zero);
+      _controller.pause();
+      
+      // Find the nearest PageView and trigger page change
+      final pageController = _findPageController(context);
+      if (pageController != null) {
+        pageController.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
 
     final isBuffering = _controller.value.isBuffering;
-    if (_isBuffering != isBuffering) {
+    if (_isBuffering != isBuffering && !_isDisposed) {
       setState(() => _isBuffering = isBuffering);
     }
 
-    if (mounted) {
+    if (mounted && !_isDisposed) {
       setState(() {});
     }
   }
 
+  PageController? _findPageController(BuildContext context) {
+    try {
+      final pageView = context.findAncestorWidgetOfExactType<PageView>();
+      if (pageView != null) {
+        return pageView.controller;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> cleanup() async {
+    if (_isDisposed) return;
+    
+    dev.log('Starting cleanup for HLSVideoPlayer - videoId: ${widget.video.id}',
+      name: 'HLSVideoPlayer');
+    
+    _bufferCheckTimer?.cancel();
+    _controller.removeListener(_onVideoProgress);
+    
+    try {
+      await _controller.pause();
+      await _controller.dispose();
+    } catch (e) {
+      dev.log('Error during cleanup: $e', name: 'HLSVideoPlayer');
+    }
+  }
+
+  @override
+  void dispose() {
+    dev.log('Disposing HLSVideoPlayer - videoId: ${widget.video.id}',
+      name: 'HLSVideoPlayer');
+    
+    _isDisposed = true;
+    
+    cleanup().then((_) {
+      dev.log('Cleanup completed for videoId: ${widget.video.id}',
+        name: 'HLSVideoPlayer');
+    }).catchError((error) {
+      dev.log('Error during cleanup: $error',
+        name: 'HLSVideoPlayer',
+        error: error);
+    });
+    
+    super.dispose();
+  }
+
   Future<void> switchToVideo(Video newVideo, {VideoPlayerController? preloadedController}) async {
+    if (_isDisposed) return;
+    
     dev.log('Switching to video: ${newVideo.id}', name: 'HLSVideoPlayer');
     
     final oldController = _controller;
@@ -201,7 +266,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         await _controller.initialize();
       }
 
-      if (!mounted) {
+      if (!mounted || _isDisposed) {
         await _controller.dispose();
         return;
       }
@@ -215,7 +280,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       _startBufferCheck();
       _controller.addListener(_onVideoProgress);
 
-      if (widget.autoplay) {
+      if (widget.autoplay && !_isDisposed) {
         await _controller.play();
         widget.onPlayingStateChanged?.call(true);
       }
@@ -227,24 +292,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         name: 'HLSVideoPlayer',
         error: e,
         stackTrace: stackTrace);
-      setState(() => _isError = true);
-      widget.onError?.call();
+      if (mounted && !_isDisposed) {
+        setState(() => _isError = true);
+        widget.onError?.call();
+      }
       rethrow;
     }
-  }
-
-  @override
-  void dispose() {
-    dev.log('Disposing HLSVideoPlayer - videoId: ${widget.video.id}',
-      name: 'HLSVideoPlayer');
-    _bufferCheckTimer?.cancel();
-    _controller.removeListener(_onVideoProgress);
-    
-    Future.microtask(() async {
-      await _controller.dispose();
-    });
-    
-    super.dispose();
   }
 
   @override

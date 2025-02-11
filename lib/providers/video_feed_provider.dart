@@ -16,6 +16,7 @@ class VideoFeedProvider with ChangeNotifier {
   Video? _previousVideo;
   bool _isLoading = false;
   bool _isControllerReady = false;
+  bool _isEnabled = true;
   String? _error;
   String _feedType = 'for_you'; // Default feed type
   bool _hasLiked = false;
@@ -31,7 +32,7 @@ class VideoFeedProvider with ChangeNotifier {
   }) : _feedService = feedService ?? VideoFeedService(),
        _videoRepository = videoRepository ?? VideoRepository(),
        _auth = auth ?? FirebaseAuth.instance {
-    _initializeVideos();
+    // Don't initialize videos automatically
   }
 
   Video? get currentVideo => _currentVideo;
@@ -419,6 +420,43 @@ class VideoFeedProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       // Handle error silently
+    }
+  }
+
+  void setEnabled(bool enabled) {
+    if (_isEnabled == enabled) return;
+    _isEnabled = enabled;
+    
+    if (enabled) {
+      // Schedule initialization for next frame to avoid tree lock issues
+      Future.microtask(() {
+        if (_isEnabled) { // Check if still enabled
+          _initializeVideos();
+        }
+      });
+    } else {
+      // Cleanup resources
+      _currentVideo = null;
+      _nextVideo = null;
+      _previousVideo = null;
+      _error = null;
+      _currentVideoId = null;
+      _setControllerReady(false);
+      if (_currentSession != null) {
+        endCurrentSession(false).catchError((e) {
+          dev.log('Error ending session during disable: $e', 
+            name: 'VideoFeedProvider', 
+            error: e);
+        });
+      }
+      _positionUpdateTimer?.cancel();
+      
+      // Notify listeners on next frame
+      Future.microtask(() {
+        if (!_isEnabled) { // Check if still disabled
+          notifyListeners();
+        }
+      });
     }
   }
 

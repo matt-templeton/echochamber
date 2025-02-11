@@ -12,6 +12,8 @@ import '../../utils/number_formatter.dart';
 import 'dart:developer' as dev;
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../providers/video_feed_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? initialVideoId;
@@ -30,11 +32,19 @@ class _HomeScreenState extends State<HomeScreen> {
   late final VideoBufferManager _bufferManager;
   late final VideoRepository _repository;
   late final PageController _pageController;
+  late final VideoFeedProvider _videoFeedProvider;
   GlobalKey<HLSVideoPlayerState> _playerKey = GlobalKey();
   
   bool _isLoading = false;
   bool _hasMoreVideos = true;
   bool _isTransitioning = false;
+  bool _hasLiked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _videoFeedProvider = context.read<VideoFeedProvider>();
+  }
 
   @override
   void initState() {
@@ -46,7 +56,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _repository = VideoRepository();
     _pageController = PageController();
     
-    _initializeVideoFeed();
+    // Schedule enabling video feed provider after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _videoFeedProvider.setEnabled(true);
+      }
+    });
+    
+    _initializeVideoFeed().then((_) {
+      // Check initial like status after feed is initialized
+      _checkLikeStatus();
+    });
   }
 
   Future<void> _initializeVideoFeed() async {
@@ -140,6 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
+      // Check if the current video is liked
+      await _checkLikeStatus();
+
       // Load more videos if needed
       if (index >= _videoList.length - 2) {
         await _loadMoreVideos();
@@ -163,12 +186,97 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _checkLikeStatus() async {
+    if (_videoList.currentVideo == null) return;
+    
+    final auth = context.read<FirebaseAuth>();
+    final user = auth.currentUser;
+    if (user == null) {
+      dev.log('No user logged in when checking like status', name: 'HomeScreen');
+      return;
+    }
+
+    try {
+      dev.log('Checking like status for video: ${_videoList.currentVideo!.id}, user: ${user.uid}', 
+        name: 'HomeScreen');
+      
+      final hasLiked = await _repository.hasUserLikedVideo(
+        _videoList.currentVideo!.id,
+        user.uid,
+      );
+      
+      dev.log('Like status result: $hasLiked', name: 'HomeScreen');
+      
+      if (mounted) {
+        setState(() => _hasLiked = hasLiked);
+      }
+    } catch (e, stackTrace) {
+      dev.log('Error checking like status: $e', 
+        name: 'HomeScreen',
+        error: e,
+        stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    if (_videoList.currentVideo == null) return;
+    
+    final auth = context.read<FirebaseAuth>();
+    final user = auth.currentUser;
+    if (user == null) {
+      dev.log('No user logged in when attempting to like/unlike', name: 'HomeScreen');
+      return;
+    }
+
+    try {
+      dev.log('Toggling like for video: ${_videoList.currentVideo!.id}, user: ${user.uid}, current state: $_hasLiked', 
+        name: 'HomeScreen');
+      
+      if (_hasLiked) {
+        // Unlike the video
+        await _repository.unlikeVideo(_videoList.currentVideo!.id, user.uid);
+        if (mounted) {
+          setState(() {
+            _hasLiked = false;
+            // Update the video in the list with decremented like count
+            final updatedVideo = _videoList.currentVideo!.copyWith(
+              likesCount: _videoList.currentVideo!.likesCount - 1
+            );
+            _videoList.videos[_videoList.currentIndex] = updatedVideo;
+          });
+          dev.log('Successfully unliked video', name: 'HomeScreen');
+        }
+      } else {
+        // Like the video
+        await _repository.likeVideo(_videoList.currentVideo!.id, user.uid);
+        if (mounted) {
+          setState(() {
+            _hasLiked = true;
+            // Update the video in the list with incremented like count
+            final updatedVideo = _videoList.currentVideo!.copyWith(
+              likesCount: _videoList.currentVideo!.likesCount + 1
+            );
+            _videoList.videos[_videoList.currentIndex] = updatedVideo;
+          });
+          dev.log('Successfully liked video', name: 'HomeScreen');
+        }
+      }
+    } catch (e, stackTrace) {
+      dev.log('Error toggling like: $e', 
+        name: 'HomeScreen',
+        error: e,
+        stackTrace: stackTrace);
+    }
+  }
+
   void _onBufferProgress(String videoId, double progress) {
     _bufferManager.updateBufferProgress(videoId, progress);
   }
 
   @override
   void dispose() {
+    // Disable video feed provider using stored reference
+    _videoFeedProvider.setEnabled(false);
     _pageController.dispose();
     _bufferManager.dispose();
     super.dispose();
@@ -176,6 +284,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<FirebaseAuth>();
+    final isAuthenticated = auth.currentUser != null;
+
     return Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -270,16 +381,41 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.favorite_border),
-                            color: Colors.white,
+                            icon: Icon(
+                              _hasLiked ? Icons.favorite : Icons.favorite_border,
+                              color: isAuthenticated 
+                                ? (_hasLiked ? Colors.red : Colors.white)
+                                : Colors.white.withOpacity(0.5),
+                            ),
                             iconSize: 30,
-                            onPressed: () {
-                              // TODO: Implement like functionality
+                            onPressed: isAuthenticated ? _toggleLike : () {
+                              // Show login prompt
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Please sign in to like videos'),
+                                  action: SnackBarAction(
+                                    label: 'Sign In',
+                                    onPressed: () {
+                                      // TODO: Navigate to sign in screen
+                                      // For now just show another message
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Sign in functionality coming soon'),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
                             },
                           ),
-                          const Text(
-                            '0',
-                            style: TextStyle(color: Colors.white),
+                          Text(
+                            '${_videoList.currentVideo!.likesCount}',
+                            style: TextStyle(
+                              color: isAuthenticated 
+                                ? Colors.white 
+                                : Colors.white.withOpacity(0.5)
+                            ),
                           ),
                           const SizedBox(height: 16),
                           IconButton(
@@ -290,9 +426,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               // TODO: Implement comments functionality
                             },
                           ),
-                          const Text(
-                            '0',
-                            style: TextStyle(color: Colors.white),
+                          Text(
+                            '${_videoList.currentVideo!.commentsCount}',
+                            style: const TextStyle(color: Colors.white),
                           ),
                         ],
                       ),
