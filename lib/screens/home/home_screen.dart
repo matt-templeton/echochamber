@@ -26,85 +26,49 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const int _maxBufferedVideos = 3;
-  
   late final VideoList _videoList;
   late final VideoBufferManager _bufferManager;
   late final VideoRepository _repository;
   late final PageController _pageController;
   GlobalKey<HLSVideoPlayerState> _playerKey = GlobalKey();
-  final Set<String> _nextVideoFetchedFor = {};
   
   bool _isLoading = false;
   bool _hasMoreVideos = true;
-  bool _isTransitioning = false;  // Add transition lock
+  bool _isTransitioning = false;
 
   @override
   void initState() {
     super.initState();
     dev.log('HomeScreen initialized', name: 'HomeScreen');
     
-    _videoList = VideoList(maxLength: 10);  // Keep 10 videos in list max
-    _bufferManager = VideoBufferManager(maxBufferedVideos: _maxBufferedVideos);
+    _videoList = VideoList(maxLength: 10);
+    _bufferManager = VideoBufferManager();
     _repository = VideoRepository();
     _pageController = PageController();
     
-    // Listen for video added events
-    _videoList.addListener(_handleVideoListChanged);
-    
     _initializeVideoFeed();
-  }
-
-  void _handleVideoListChanged() {
-    final currentVideo = _videoList.currentVideo;
-    if (currentVideo == null) return;
-
-    dev.log('VideoList changed - videos in list: ${_videoList.videos.map((v) => v.id).join(", ")}', name: 'HomeScreen');
-    dev.log('Current video index: ${_videoList.currentIndex}', name: 'HomeScreen');
-
-    // Get the index of the current video
-    final index = _videoList.videos.indexOf(currentVideo);
-    
-    // Determine buffer priority based on position
-    BufferPriority priority;
-    if (index == _videoList.currentIndex) {
-      priority = BufferPriority.high;  // Current video gets high priority
-    } else if (index == _videoList.currentIndex + 1) {
-      priority = BufferPriority.medium;  // Next video gets medium priority
-    } else {
-      priority = BufferPriority.low;  // Future videos get low priority
-    }
-
-    // Add to buffer manager with appropriate priority
-    _bufferManager.addToBuffer(currentVideo, priority);
-    
-    dev.log('Video added to buffer: ${currentVideo.id} with priority: $priority', name: 'HomeScreen');
   }
 
   Future<void> _initializeVideoFeed() async {
     dev.log('Initializing video feed', name: 'HomeScreen');
     
     if (widget.initialVideoId != null) {
-      // Load specific video if ID provided
       final video = await _repository.getVideoById(widget.initialVideoId!);
       if (video != null) {
         _videoList.addVideo(video);
-        _bufferManager.addToBuffer(video, BufferPriority.high);
+        _bufferManager.addToBuffer(video);
       }
     }
     
-    // Load initial set of videos
     await _loadMoreVideos();
   }
 
   Future<void> _loadMoreVideos() async {
     if (_isLoading || !_hasMoreVideos) {
-      dev.log('Skipping _loadMoreVideos: isLoading=$_isLoading, hasMoreVideos=$_hasMoreVideos', name: 'HomeScreen');
       return;
     }
     
     setState(() => _isLoading = true);
-    dev.log('Starting to load more videos...', name: 'HomeScreen');
     
     try {
       final snapshot = await _repository.getNextFeedVideo(
@@ -113,33 +77,24 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       
       if (snapshot.docs.isEmpty) {
-        dev.log('No more videos available from repository', name: 'HomeScreen');
         _hasMoreVideos = false;
         return;
       }
 
-      dev.log('Received ${snapshot.docs.length} videos from repository', name: 'HomeScreen');
-
       for (final doc in snapshot.docs) {
         final video = Video.fromFirestore(doc);
-        dev.log('Processing video from repository: ${video.id}', name: 'HomeScreen');
         final wasAdded = _videoList.addVideo(video);
-        dev.log('Attempt to add video ${video.id} to list: ${wasAdded ? "SUCCESS" : "FAILED"}', name: 'HomeScreen');
         
-        if (wasAdded) {
-          final currentIndex = _videoList.currentIndex;
-          if (_videoList.length <= _maxBufferedVideos || 
-              _videoList.videos.indexOf(video) <= currentIndex + 2) {
-            dev.log('Adding video ${video.id} to buffer with priority: ${_videoList.length == 1 ? "HIGH" : "MEDIUM"}', name: 'HomeScreen');
-            _bufferManager.addToBuffer(
-              video,
-              _videoList.length == 1 ? BufferPriority.high : BufferPriority.medium
-            );
-          }
+        // Only buffer the first video initially
+        if (wasAdded && _videoList.length == 1) {
+          await _bufferManager.addToBuffer(video);
         }
       }
     } catch (e, stackTrace) {
-      dev.log('Error loading videos', name: 'HomeScreen', error: e, stackTrace: stackTrace);
+      dev.log('Error loading videos', 
+        name: 'HomeScreen', 
+        error: e, 
+        stackTrace: stackTrace);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -148,94 +103,47 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onPageChanged(int index) async {
-    // Prevent concurrent transitions
     if (_isTransitioning) {
-      dev.log('Page change blocked - transition already in progress', name: 'HomeScreen');
       return;
     }
     
     _isTransitioning = true;
     dev.log('========== PAGE CHANGE EVENT ==========', name: 'HomeScreen');
-    dev.log('PageView detected swipe to index: $index from previous index: ${_videoList.currentIndex}', name: 'HomeScreen');
     
     try {
       if (index < 0 || index >= _videoList.length) {
-        dev.log('Invalid index: $index, ignoring page change', name: 'HomeScreen');
         return;
       }
 
       final targetVideo = _videoList.videos[index];
-      dev.log('Target video for switch: ${targetVideo.id}', name: 'HomeScreen');
-      
-      // Update current index in video list
       bool moved = false;
+      
       if (index > _videoList.currentIndex) {
-        dev.log('Swiped FORWARD to next video', name: 'HomeScreen');
         moved = _videoList.moveToNext();
       } else if (index < _videoList.currentIndex) {
-        dev.log('Swiped BACKWARD to previous video', name: 'HomeScreen');
         moved = _videoList.moveToPrevious();
       }
 
-      if (!moved) {
-        dev.log('Failed to move to target index: $index', name: 'HomeScreen');
-        return;
-      }
+      if (!moved) return;
 
-      // Force UI update for video info
       if (mounted) {
         setState(() {});
       }
 
-      // Check buffer state
-      final bufferedController = _bufferManager.getBufferedVideo(targetVideo.id);
-      dev.log('Buffer state for ${targetVideo.id}: ${bufferedController != null ? "FOUND in buffer" : "NOT in buffer"}', name: 'HomeScreen');
+      // Buffer new video
+      await _bufferManager.addToBuffer(targetVideo);
       
-      // Ensure we have a valid player key
-      if (_playerKey.currentState == null) {
-        dev.log('Player key state is null, rebuilding player', name: 'HomeScreen');
-        setState(() {
-          _playerKey = GlobalKey<HLSVideoPlayerState>();
-        });
-        return;
-      }
-
-      // Switch video with a timeout
-      await Future.any([
-        _playerKey.currentState!.switchToVideo(
-          targetVideo,
-          preloadedController: bufferedController,
-        ),
-        Future.delayed(const Duration(seconds: 5), () {
-          throw TimeoutException('Video switch timed out');
-        }),
-      ]);
-      
-      dev.log('Video switch completed successfully', name: 'HomeScreen');
-
-      // Ensure video starts playing
       if (_playerKey.currentState != null) {
-        await _playerKey.currentState!.ensurePlayback();
+        await _playerKey.currentState!.switchToVideo(
+          targetVideo,
+          preloadedController: _bufferManager.getBufferedVideo(targetVideo.id),
+        );
       }
 
-      // Background tasks
-      Future.microtask(() async {
-        // Load more videos if needed
-        if (index >= _videoList.length - 2) {
-          dev.log('Near end of list, triggering load of more videos...', name: 'HomeScreen');
-          await _loadMoreVideos();
-        }
-
-        // Buffer management
-        if (index < _videoList.length - 1) {
-          final nextVideo = _videoList.videos[index + 1];
-          dev.log('Checking next video buffer state: ${nextVideo.id}', name: 'HomeScreen');
-          if (!_bufferManager.hasBufferedVideo(nextVideo.id)) {
-            dev.log('Next video not in buffer, adding to buffer: ${nextVideo.id}', name: 'HomeScreen');
-            await _bufferManager.addToBuffer(nextVideo, BufferPriority.medium);
-          }
-        }
-      });
+      // Load more videos if needed
+      if (index >= _videoList.length - 2) {
+        await _loadMoreVideos();
+      }
 
     } catch (e, stackTrace) {
       dev.log(
@@ -245,7 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
         stackTrace: stackTrace
       );
       
-      // Recovery attempt
       if (mounted) {
         setState(() {
           _playerKey = GlobalKey<HLSVideoPlayerState>();
@@ -253,68 +160,15 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } finally {
       _isTransitioning = false;
-      dev.log('========== PAGE CHANGE COMPLETE ==========', name: 'HomeScreen');
     }
   }
 
   void _onBufferProgress(String videoId, double progress) {
-    // Update buffer progress in buffer manager
     _bufferManager.updateBufferProgress(videoId, progress);
-    
-    // When a video reaches 25% buffered, fetch and add next video
-    // Only trigger fetch if we haven't already fetched for this video
-    if (!_nextVideoFetchedFor.contains(videoId)) {
-      final currentIndex = _videoList.videos.indexWhere((v) => v.id == videoId);
-      if (currentIndex >= 0 && currentIndex == _videoList.currentIndex) {
-        if (progress >= 0.25) {
-          dev.log('Video $videoId buffer at ${(progress * 100).toStringAsFixed(1)}% - triggering next video fetch', name: 'HomeScreen');
-          _nextVideoFetchedFor.add(videoId);  // Mark as fetched
-          _loadNextVideoIntoList();
-        } else {
-          dev.log('Video $videoId buffer at ${(progress * 100).toStringAsFixed(1)}% - waiting for 25% to trigger fetch', name: 'HomeScreen');
-        }
-      }
-    }
-
-    // Log buffer progress for debugging
-    dev.log('Buffer progress for video $videoId: ${(progress * 100).toStringAsFixed(1)}%', name: 'HomeScreen');
-  }
-
-  Future<void> _loadNextVideoIntoList() async {
-    dev.log('Starting _loadNextVideoIntoList', name: 'HomeScreen');
-    if (_isLoading) {
-      dev.log('Skipping _loadNextVideoIntoList: already loading', name: 'HomeScreen');
-      return;
-    }
-    
-    try {
-      dev.log('Fetching next video from repository', name: 'HomeScreen');
-      final snapshot = await _repository.getNextFeedVideo(
-        startAfter: _videoList.length > 0 ? 
-          await _repository.getVideoDocumentById(_videoList.videos.last.id) : null
-      );
-      
-      if (snapshot.docs.isNotEmpty) {
-        final video = Video.fromFirestore(snapshot.docs.first);
-        dev.log('Adding video ${video.id} to list', name: 'HomeScreen');
-        final added = _videoList.addVideo(video);  // This will fire VideoAdded event
-        dev.log('Video added successfully: $added', name: 'HomeScreen');
-      } else {
-        dev.log('No more videos available from repository', name: 'HomeScreen');
-      }
-    } catch (e, stackTrace) {
-      dev.log(
-        'Error loading next video at buffer threshold', 
-        name: 'HomeScreen', 
-        error: e, 
-        stackTrace: stackTrace
-      );
-    }
   }
 
   @override
   void dispose() {
-    _videoList.removeListener(_handleVideoListChanged);
     _pageController.dispose();
     _bufferManager.dispose();
     super.dispose();

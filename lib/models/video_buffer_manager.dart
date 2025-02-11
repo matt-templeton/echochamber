@@ -1,12 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
-import 'video_model.dart';
+import 'dart:io';
+import 'dart:async';
 import 'dart:collection';
 import 'dart:developer' as dev;
+import 'video_model.dart';
 
 /// Priority levels for buffer requests
 enum BufferPriority {
-  high,    // Swipe-triggered loads
+  high,    // Current video
   medium,  // Next video preload
   low      // Future video preloads
 }
@@ -24,22 +26,84 @@ class BufferRequest {
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
-/// Manages the buffering of videos with priority handling
+/// Configuration for buffer pools
+class BufferPoolConfig {
+  final int initialSize;
+  final int maxSize;
+  final Duration retentionPeriod;
+
+  const BufferPoolConfig({
+    required this.initialSize,
+    required this.maxSize,
+    this.retentionPeriod = const Duration(seconds: 30),
+  });
+}
+
+/// Manages the buffering of videos with priority handling and performance optimization
 class VideoBufferManager extends ChangeNotifier {
   final Map<String, VideoPlayerController> _bufferedVideos = {};
   final Map<String, double> _bufferProgress = {};
-  final Queue<BufferRequest> _bufferQueue = Queue<BufferRequest>();
-  final int maxBufferedVideos;
-  bool _isProcessingQueue = false;
-
-  VideoBufferManager({
-    this.maxBufferedVideos = 3,
-  }) : assert(maxBufferedVideos > 0, 'maxBufferedVideos must be greater than 0');
+  String? _currentVideoId;
+  bool _isProcessingRequest = false;
 
   // Getters
-  bool get isBuffering => _isProcessingQueue;
+  bool get isBuffering => _isProcessingRequest;
   Map<String, double> get bufferProgress => Map.unmodifiable(_bufferProgress);
   bool hasBufferedVideo(String videoId) => _bufferedVideos.containsKey(videoId);
+  
+  /// Adds a video to the buffer, replacing any existing video
+  Future<void> addToBuffer(Video video) async {
+    dev.log('Adding video to buffer: ${video.id}', name: 'VideoBufferManager');
+    
+    if (_isProcessingRequest) {
+      dev.log('Already processing a request', name: 'VideoBufferManager');
+      return;
+    }
+
+    _isProcessingRequest = true;
+    
+    try {
+      // Clear existing video if different
+      if (_currentVideoId != null && _currentVideoId != video.id) {
+        await _removeFromBuffer(_currentVideoId!);
+      }
+
+      if (_bufferedVideos.containsKey(video.id)) {
+        dev.log('Video already buffered: ${video.id}', name: 'VideoBufferManager');
+        return;
+      }
+
+      _currentVideoId = video.id;
+      
+      // Initialize new controller
+      dev.log('Initializing controller for: ${video.id}', name: 'VideoBufferManager');
+      final controller = VideoPlayerController.network(
+        video.videoUrl,
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: false,
+          allowBackgroundPlayback: false,
+        ),
+      );
+
+      try {
+        await controller.initialize();
+        _bufferedVideos[video.id] = controller;
+        _bufferProgress[video.id] = 1.0;
+        dev.log('Video added to buffer: ${video.id}', name: 'VideoBufferManager');
+      } catch (e, stackTrace) {
+        dev.log('Error initializing controller', 
+          name: 'VideoBufferManager',
+          error: e,
+          stackTrace: stackTrace);
+        await controller.dispose();
+        rethrow;
+      }
+      
+    } finally {
+      _isProcessingRequest = false;
+      notifyListeners();
+    }
+  }
 
   /// Updates the buffer progress for a specific video
   void updateBufferProgress(String videoId, double progress) {
@@ -52,168 +116,28 @@ class VideoBufferManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Adds a video to the buffer with specified priority
-  Future<void> addToBuffer(Video video, BufferPriority priority) async {
-    dev.log('Adding video to buffer: ${video.id} with priority: $priority', name: 'VideoBufferManager');
-    
-    // If already buffered or in queue, update priority if higher
-    if (_bufferedVideos.containsKey(video.id)) {
-      dev.log('Video already buffered: ${video.id}', name: 'VideoBufferManager');
-      return;
-    }
-
-    // Create buffer request
-    final request = BufferRequest(
-      video: video,
-      priority: priority,
-    );
-
-    // Add to queue based on priority
-    _addToQueueWithPriority(request);
-    
-    // Start processing queue if not already processing
-    if (!_isProcessingQueue) {
-      _processBufferQueue();
-    }
-  }
-
   /// Retrieves a buffered video controller
   VideoPlayerController? getBufferedVideo(String videoId) {
     return _bufferedVideos[videoId];
   }
 
-  /// Gets the buffer progress for a video
-  double getBufferProgressForVideo(String videoId) {
-    return _bufferProgress[videoId] ?? 0.0;
-  }
-
-  /// Clears old buffers when limit is reached
-  void _clearOldBuffers() {
-    if (_bufferedVideos.length <= maxBufferedVideos - 1) return;
-
-    dev.log('Clearing old buffers', name: 'VideoBufferManager');
-    dev.log('Current buffer size: ${_bufferedVideos.length}, Max allowed: $maxBufferedVideos', name: 'VideoBufferManager');
-    
-    // More aggressive cleanup - keep one slot free
-    while (_bufferedVideos.length > maxBufferedVideos - 1) {
-      // Find oldest video to remove
-      final oldestVideo = _bufferedVideos.entries.first;
-      dev.log('Removing old video from buffer: ${oldestVideo.key}', name: 'VideoBufferManager');
-      _removeFromBuffer(oldestVideo.key);
-    }
-    
-    dev.log('Buffer cleanup complete. New size: ${_bufferedVideos.length}', name: 'VideoBufferManager');
-  }
-
-  /// Removes a video from buffer
-  void _removeFromBuffer(String videoId) {
+  Future<void> _removeFromBuffer(String videoId) async {
     dev.log('Removing video from buffer: $videoId', name: 'VideoBufferManager');
     
     final controller = _bufferedVideos.remove(videoId);
     if (controller != null) {
-      // Ensure controller is paused before disposal
-      controller.pause().then((_) {
-        controller.dispose();
-      });
+      await controller.pause();
+      await controller.dispose();
     }
     _bufferProgress.remove(videoId);
+    
+    if (_currentVideoId == videoId) {
+      _currentVideoId = null;
+    }
+    
     notifyListeners();
   }
 
-  /// Adds a request to the queue with priority ordering
-  void _addToQueueWithPriority(BufferRequest request) {
-    dev.log('Adding to buffer queue: ${request.video.id}', name: 'VideoBufferManager');
-    dev.log('Priority: ${request.priority}', name: 'VideoBufferManager');
-    
-    // Remove any existing requests for the same video
-    final existingCount = _bufferQueue.where((r) => r.video.id == request.video.id).length;
-    _bufferQueue.removeWhere((r) => r.video.id == request.video.id);
-    if (existingCount > 0) {
-      dev.log('Removed existing queue entry for: ${request.video.id}', name: 'VideoBufferManager');
-    }
-
-    // Find position to insert based on priority
-    final index = _bufferQueue.toList().indexWhere(
-      (r) => r.priority.index > request.priority.index
-    );
-
-    if (index == -1) {
-      _bufferQueue.addLast(request);
-      dev.log('Added to end of queue: ${request.video.id}', name: 'VideoBufferManager');
-    } else {
-      final newQueue = Queue<BufferRequest>.from([
-        ..._bufferQueue.take(index),
-        request,
-        ..._bufferQueue.skip(index),
-      ]);
-      _bufferQueue.clear();
-      _bufferQueue.addAll(newQueue);
-      dev.log('Inserted into queue at position $index: ${request.video.id}', name: 'VideoBufferManager');
-    }
-    
-    dev.log('Current queue size: ${_bufferQueue.length}', name: 'VideoBufferManager');
-    dev.log('Queue order: ${_bufferQueue.map((r) => "${r.video.id}(${r.priority})").join(", ")}', name: 'VideoBufferManager');
-  }
-
-  /// Processes the buffer queue
-  Future<void> _processBufferQueue() async {
-    if (_isProcessingQueue || _bufferQueue.isEmpty) return;
-
-    _isProcessingQueue = true;
-    dev.log('Starting buffer queue processing', name: 'VideoBufferManager');
-    dev.log('Current buffer queue size: ${_bufferQueue.length}', name: 'VideoBufferManager');
-    dev.log('Currently buffered videos: ${_bufferedVideos.keys.join(", ")}', name: 'VideoBufferManager');
-    notifyListeners();
-
-    try {
-      while (_bufferQueue.isNotEmpty) {
-        final request = _bufferQueue.first;
-        dev.log('Processing buffer request for video: ${request.video.id}', name: 'VideoBufferManager');
-        dev.log('Buffer priority: ${request.priority}', name: 'VideoBufferManager');
-        
-        // Initialize video controller with actual video URL
-        dev.log('Initializing controller for: ${request.video.id}', name: 'VideoBufferManager');
-        final controller = VideoPlayerController.network(
-          request.video.videoUrl,
-          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
-        );
-
-        try {
-          await controller.initialize();
-          dev.log('Controller initialization successful for: ${request.video.id}', name: 'VideoBufferManager');
-        } catch (e) {
-          dev.log('Controller initialization failed for: ${request.video.id}', name: 'VideoBufferManager', error: e);
-          continue;
-        }
-        
-        // Add to buffered videos
-        _bufferedVideos[request.video.id] = controller;
-        _bufferProgress[request.video.id] = 1.0; // Fully buffered
-        dev.log('Video added to buffer: ${request.video.id}', name: 'VideoBufferManager');
-        
-        _bufferQueue.removeFirst();
-        dev.log('Removed from queue: ${request.video.id}', name: 'VideoBufferManager');
-        dev.log('Remaining queue size: ${_bufferQueue.length}', name: 'VideoBufferManager');
-        
-        _clearOldBuffers();
-        notifyListeners();
-      }
-    } catch (e, stackTrace) {
-      dev.log(
-        'Error processing buffer queue',
-        name: 'VideoBufferManager',
-        error: e,
-        stackTrace: stackTrace,
-      );
-    } finally {
-      _isProcessingQueue = false;
-      dev.log('Buffer queue processing completed', name: 'VideoBufferManager');
-      dev.log('Final buffered videos: ${_bufferedVideos.keys.join(", ")}', name: 'VideoBufferManager');
-      notifyListeners();
-    }
-  }
-
-  /// Cleans up resources
   @override
   void dispose() {
     for (final controller in _bufferedVideos.values) {
@@ -221,7 +145,29 @@ class VideoBufferManager extends ChangeNotifier {
     }
     _bufferedVideos.clear();
     _bufferProgress.clear();
-    _bufferQueue.clear();
     super.dispose();
   }
+}
+
+/// Memory information structure
+class MemoryInfo {
+  final int total;
+  final int used;
+  final int free;
+
+  const MemoryInfo({
+    required this.total,
+    required this.used,
+    required this.free,
+  });
+}
+
+Future<MemoryInfo> _getMemoryInfo() async {
+  // This is a placeholder implementation
+  // In a real app, you would get actual memory info from the platform
+  return const MemoryInfo(
+    total: 1024 * 1024 * 1024,  // 1GB
+    used: 512 * 1024 * 1024,    // 512MB
+    free: 512 * 1024 * 1024,    // 512MB
+  );
 } 

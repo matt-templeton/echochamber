@@ -5,6 +5,36 @@ import '../../models/video_model.dart';
 import 'dart:async';
 import 'dart:developer' as dev;
 
+/// Represents a quality variant with its properties
+class QualityVariant {
+  final String quality;
+  final int bitrate;
+  final String url;
+
+  const QualityVariant({
+    required this.quality,
+    required this.bitrate,
+    required this.url,
+  });
+}
+
+/// Performance metrics for video playback
+class PlaybackMetrics {
+  final double bufferHealth;
+  final double playbackRate;
+  final int droppedFrames;
+  final Duration bufferDuration;
+  final bool isBuffering;
+
+  const PlaybackMetrics({
+    required this.bufferHealth,
+    required this.playbackRate,
+    required this.droppedFrames,
+    required this.bufferDuration,
+    required this.isBuffering,
+  });
+}
+
 class HLSVideoPlayer extends StatefulWidget {
   final Video video;
   final VideoPlayerController? preloadedController;
@@ -46,7 +76,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   @override
   void initState() {
     super.initState();
-    dev.log('HLSVideoPlayer initState - videoId: ${widget.video.id}', name: 'HLSVideoPlayer');
+    dev.log('HLSVideoPlayer initState - videoId: ${widget.video.id}', 
+      name: 'HLSVideoPlayer');
     
     if (widget.preloadedController != null) {
       _controller = widget.preloadedController!;
@@ -57,13 +88,16 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   Future<void> _initializePlayer() async {
-    dev.log('Starting player initialization - videoId: ${widget.video.id}', name: 'HLSVideoPlayer');
+    dev.log('Starting player initialization - videoId: ${widget.video.id}',
+      name: 'HLSVideoPlayer');
     
     try {
-      dev.log('Creating controller for URL: ${widget.video.videoUrl}', name: 'HLSVideoPlayer');
       _controller = VideoPlayerController.network(
         widget.video.videoUrl,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: false,
+          allowBackgroundPlayback: false,
+        ),
       );
 
       await _controller.initialize();
@@ -71,7 +105,10 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       
       _onControllerInitialized();
     } catch (e, stackTrace) {
-      dev.log('Error initializing video player: $e', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+      dev.log('Error initializing video player: $e',
+        name: 'HLSVideoPlayer',
+        error: e,
+        stackTrace: stackTrace);
       if (mounted) {
         setState(() => _isError = true);
         widget.onError?.call();
@@ -86,13 +123,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       _aspectRatio = _controller.value.aspectRatio;
     });
 
-    // Start buffer progress tracking
     _startBufferCheck();
-
-    // Listen for video completion
     _controller.addListener(_onVideoProgress);
 
-    // Start playing if autoplay is enabled
     if (widget.autoplay) {
       _controller.play();
       widget.onPlayingStateChanged?.call(true);
@@ -109,7 +142,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       final buffered = _controller.value.buffered;
       if (buffered.isEmpty) return;
 
-      // Calculate buffer progress as percentage of video duration
       final duration = _controller.value.duration.inMilliseconds;
       final bufferedMs = buffered.fold<int>(0, (sum, range) => 
         sum + (range.end - range.start).inMilliseconds
@@ -124,127 +156,88 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (!mounted || !_controller.value.isInitialized) return;
 
     if (_controller.value.hasError) {
-      dev.log('Video controller reported error', name: 'HLSVideoPlayer', error: _controller.value.errorDescription);
+      dev.log('Video controller reported error',
+        name: 'HLSVideoPlayer',
+        error: _controller.value.errorDescription);
       return;
     }
 
-    // Check for video completion
     if (_controller.value.position >= _controller.value.duration) {
       dev.log('Video reached end', name: 'HLSVideoPlayer');
       widget.onVideoEnd?.call();
     }
 
-    // Update buffering state
     final isBuffering = _controller.value.isBuffering;
     if (_isBuffering != isBuffering) {
       setState(() => _isBuffering = isBuffering);
     }
 
-    // Force rebuild to update progress bar
     if (mounted) {
       setState(() {});
     }
   }
 
-  /// Switches to a new video
   Future<void> switchToVideo(Video newVideo, {VideoPlayerController? preloadedController}) async {
     dev.log('Switching to video: ${newVideo.id}', name: 'HLSVideoPlayer');
     
-    // Keep track of old controller for cleanup
     final oldController = _controller;
-    VideoPlayerController? newController;
     
     try {
-      // First pause old controller
-      dev.log('Pausing old controller', name: 'HLSVideoPlayer');
       await oldController.pause();
       oldController.removeListener(_onVideoProgress);
       
-      // Initialize new controller
       if (preloadedController != null) {
-        dev.log('Using preloaded controller for video: ${newVideo.id}', name: 'HLSVideoPlayer');
-        newController = preloadedController;
+        _controller = preloadedController;
       } else {
-        dev.log('Creating new controller for video: ${newVideo.id}', name: 'HLSVideoPlayer');
-        newController = VideoPlayerController.network(
+        _controller = VideoPlayerController.network(
           newVideo.videoUrl,
-          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false,
+            allowBackgroundPlayback: false,
+          ),
         );
-        dev.log('Initializing new controller', name: 'HLSVideoPlayer');
-        await newController.initialize();
+        await _controller.initialize();
       }
 
       if (!mounted) {
-        dev.log('Widget unmounted during controller switch', name: 'HLSVideoPlayer');
-        await newController.dispose();
+        await _controller.dispose();
         return;
       }
 
-      // Set up new controller before disposing old one
       setState(() {
-        _controller = newController!;  // We know it's not null at this point
         _isInitialized = true;
         _isError = false;
-        _aspectRatio = newController.value.aspectRatio;
+        _aspectRatio = _controller.value.aspectRatio;
       });
 
-      // Start buffer progress tracking for new video
       _startBufferCheck();
-      
-      // Setup listeners for new controller
-      newController.addListener(_onVideoProgress);
+      _controller.addListener(_onVideoProgress);
 
-      // Start playing if autoplay is enabled
       if (widget.autoplay) {
-        await newController.play();
+        await _controller.play();
         widget.onPlayingStateChanged?.call(true);
       }
 
-      // Only dispose old controller after new one is fully set up
-      dev.log('Disposing old controller', name: 'HLSVideoPlayer');
       await oldController.dispose();
 
     } catch (e, stackTrace) {
-      dev.log('Error switching video', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
-      // If we failed to set up the new controller, keep the old one active
-      if (newController != null) {
-        await newController.dispose();
-      }
+      dev.log('Error switching video',
+        name: 'HLSVideoPlayer',
+        error: e,
+        stackTrace: stackTrace);
       setState(() => _isError = true);
       widget.onError?.call();
       rethrow;
     }
   }
 
-  /// Ensures video is playing and controls are properly initialized
-  Future<void> ensurePlayback() async {
-    if (!mounted || !_isInitialized) return;
-
-    dev.log('Ensuring video playback', name: 'HLSVideoPlayer');
-    
-    try {
-      if (!_controller.value.isPlaying) {
-        await _controller.play();
-        widget.onPlayingStateChanged?.call(true);
-      }
-      
-      // Reset controls state
-      setState(() {
-        _showControls = false;
-        _isBuffering = false;
-      });
-    } catch (e, stackTrace) {
-      dev.log('Error ensuring playback', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
-    }
-  }
-
   @override
   void dispose() {
-    dev.log('Disposing HLSVideoPlayer - videoId: ${widget.video.id}', name: 'HLSVideoPlayer');
+    dev.log('Disposing HLSVideoPlayer - videoId: ${widget.video.id}',
+      name: 'HLSVideoPlayer');
     _bufferCheckTimer?.cancel();
     _controller.removeListener(_onVideoProgress);
     
-    // Dispose controller in background to avoid blocking
     Future.microtask(() async {
       await _controller.dispose();
     });
@@ -397,6 +390,9 @@ class VideoProgressBarPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 4.0;
 
+    // Safely handle progress value
+    final safeProgress = progress.isNaN || progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress;
+
     // Draw background
     paint.color = backgroundColor;
     canvas.drawLine(
@@ -405,33 +401,42 @@ class VideoProgressBarPainter extends CustomPainter {
       paint,
     );
 
-    // Draw buffered ranges
+    // Draw buffered ranges - safely handle each range
     paint.color = bufferedColor;
     for (final range in buffered) {
-      canvas.drawLine(
-        Offset(range.start * size.width, size.height / 2),
-        Offset(range.end * size.width, size.height / 2),
-        paint,
-      );
+      final safeStart = range.start.isNaN || range.start < 0.0 ? 0.0 : range.start > 1.0 ? 1.0 : range.start;
+      final safeEnd = range.end.isNaN || range.end < 0.0 ? 0.0 : range.end > 1.0 ? 1.0 : range.end;
+      
+      if (safeEnd > safeStart) {
+        canvas.drawLine(
+          Offset(safeStart * size.width, size.height / 2),
+          Offset(safeEnd * size.width, size.height / 2),
+          paint,
+        );
+      }
     }
 
     // Draw progress
     paint.color = progressColor;
-    canvas.drawLine(
-      Offset(0, size.height / 2),
-      Offset(progress * size.width, size.height / 2),
-      paint,
-    );
+    if (safeProgress > 0.0) {
+      canvas.drawLine(
+        Offset(0, size.height / 2),
+        Offset(safeProgress * size.width, size.height / 2),
+        paint,
+      );
+    }
 
-    // Draw progress indicator ball
-    paint
-      ..color = progressColor
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(
-      Offset(progress * size.width, size.height / 2),
-      8.0,
-      paint,
-    );
+    // Draw progress indicator ball - only if we have valid progress
+    if (!progress.isNaN && progress >= 0.0 && progress <= 1.0) {
+      paint
+        ..color = progressColor
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        Offset(safeProgress * size.width, size.height / 2),
+        8.0,
+        paint,
+      );
+    }
   }
 
   @override

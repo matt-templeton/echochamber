@@ -29,7 +29,14 @@ class VideoQualityVariant {
     required this.quality,
     required this.bitrate,
     required String playlistUrl,
-  }) : playlistUrl = playlistUrl.startsWith('http') ? playlistUrl : 'gs://echo-chamber-8fb5f.firebasestorage.app/$playlistUrl';
+  }) : playlistUrl = playlistUrl.startsWith('http') ? 
+          playlistUrl : 
+          playlistUrl.startsWith('gs://') ?
+            playlistUrl.replaceFirst(
+              'gs://', 
+              'https://firebasestorage.googleapis.com/v0/b/'
+            ) + '?alt=media' :
+            playlistUrl;
 
   factory VideoQualityVariant.fromMap(Map<String, dynamic> map) {
     // Handle missing or null values
@@ -41,17 +48,16 @@ class VideoQualityVariant {
       throw FormatException('Missing playlistUrl in variant data');
     }
     
-    // Extract the path from the Firebase Storage REST API URL
+    // Handle different URL formats
     String transformedUrl = playlistUrl;
-    if (playlistUrl.contains('firebasestorage.googleapis.com')) {
-      final uri = Uri.parse(playlistUrl);
-      // Find the 'o' segment which indicates where the path starts
-      final oIndex = uri.pathSegments.indexOf('o');
-      if (oIndex >= 0 && oIndex + 1 < uri.pathSegments.length) {
-        // Get all segments after 'o' and decode them
-        final path = Uri.decodeComponent(uri.pathSegments[oIndex + 1]);
-        transformedUrl = path;
-      }
+    if (playlistUrl.startsWith('gs://')) {
+      // Convert gs:// URL to HTTPS
+      transformedUrl = playlistUrl
+        .replaceFirst('gs://', 'https://firebasestorage.googleapis.com/v0/b/')
+        + '?alt=media';
+    } else if (!playlistUrl.startsWith('http')) {
+      // Handle relative paths
+      transformedUrl = 'https://firebasestorage.googleapis.com/v0/b/echo-chamber-8fb5f.appspot.com/o/$playlistUrl?alt=media';
     }
     
     return VideoQualityVariant(
