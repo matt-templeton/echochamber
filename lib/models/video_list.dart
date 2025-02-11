@@ -30,17 +30,21 @@ class VideoList extends ChangeNotifier {
   bool addVideo(Video video) {
     if (isFull) {
       dev.log('Cannot add video ${video.id}: list is full (max: $maxLength)', name: 'VideoList');
+      dev.log('Current videos in list: ${_videos.map((v) => v.id).join(", ")}', name: 'VideoList');
       return false;
     }
 
     // Check for duplicates
     if (_videos.any((v) => v.id == video.id)) {
       dev.log('Video ${video.id} already exists in list', name: 'VideoList');
+      dev.log('Current videos in list: ${_videos.map((v) => v.id).join(", ")}', name: 'VideoList');
       return false;
     }
 
     _videos.add(video);
     dev.log('Added video ${video.id} to list. Total videos: ${_videos.length}', name: 'VideoList');
+    dev.log('Current videos in list: ${_videos.map((v) => v.id).join(", ")}', name: 'VideoList');
+    dev.log('Current index: $_currentIndex', name: 'VideoList');
     notifyListeners();
     return true;
   }
@@ -72,10 +76,15 @@ class VideoList extends ChangeNotifier {
   bool moveToNext() {
     if (_currentIndex >= _videos.length - 1) {
       dev.log('Cannot move to next: already at end of list', name: 'VideoList');
+      dev.log('Current index: $_currentIndex, List length: ${_videos.length}', name: 'VideoList');
       return false;
     }
     _currentIndex++;
-    dev.log('Moved to next video. New index: $_currentIndex, video: ${_videos[_currentIndex].id}', name: 'VideoList');
+    dev.log('----------------------------------------', name: 'VideoList');
+    dev.log('Moved to next video. New index: $_currentIndex', name: 'VideoList');
+    dev.log('Current video ID: ${_videos[_currentIndex].id}', name: 'VideoList');
+    dev.log('All videos in list: ${_videos.map((v) => v.id).join(", ")}', name: 'VideoList');
+    dev.log('----------------------------------------', name: 'VideoList');
     notifyListeners();
     return true;
   }
@@ -85,10 +94,15 @@ class VideoList extends ChangeNotifier {
   bool moveToPrevious() {
     if (_currentIndex <= 0) {
       dev.log('Cannot move to previous: already at start of list', name: 'VideoList');
+      dev.log('Current index: $_currentIndex, List length: ${_videos.length}', name: 'VideoList');
       return false;
     }
     _currentIndex--;
-    dev.log('Moved to previous video. New index: $_currentIndex, video: ${_videos[_currentIndex].id}', name: 'VideoList');
+    dev.log('----------------------------------------', name: 'VideoList');
+    dev.log('Moved to previous video. New index: $_currentIndex', name: 'VideoList');
+    dev.log('Current video ID: ${_videos[_currentIndex].id}', name: 'VideoList');
+    dev.log('All videos in list: ${_videos.map((v) => v.id).join(", ")}', name: 'VideoList');
+    dev.log('----------------------------------------', name: 'VideoList');
     notifyListeners();
     return true;
   }

@@ -150,45 +150,91 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   Future<void> switchToVideo(Video newVideo, {VideoPlayerController? preloadedController}) async {
     dev.log('Switching to video: ${newVideo.id}', name: 'HLSVideoPlayer');
     
-    // Cleanup current video
-    _bufferCheckTimer?.cancel();
-    _controller.removeListener(_onVideoProgress);
-    await _controller.pause();
+    // Keep track of old controller for cleanup
+    final oldController = _controller;
+    VideoPlayerController? newController;
     
-    if (!mounted) return;
-
-    setState(() {
-      _isInitialized = false;
-      _isError = false;
-    });
-
-    // If we have a preloaded controller, use it
-    if (preloadedController != null) {
-      await _controller.dispose();
-      _controller = preloadedController;
-      _onControllerInitialized();
-    } else {
-      // Otherwise initialize new controller
-      try {
-        final newController = VideoPlayerController.network(
+    try {
+      // First pause old controller
+      dev.log('Pausing old controller', name: 'HLSVideoPlayer');
+      await oldController.pause();
+      oldController.removeListener(_onVideoProgress);
+      
+      // Initialize new controller
+      if (preloadedController != null) {
+        dev.log('Using preloaded controller for video: ${newVideo.id}', name: 'HLSVideoPlayer');
+        newController = preloadedController;
+      } else {
+        dev.log('Creating new controller for video: ${newVideo.id}', name: 'HLSVideoPlayer');
+        newController = VideoPlayerController.network(
           newVideo.videoUrl,
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
         );
-
+        dev.log('Initializing new controller', name: 'HLSVideoPlayer');
         await newController.initialize();
-        if (!mounted) {
-          newController.dispose();
-          return;
-        }
-
-        await _controller.dispose();
-        _controller = newController;
-        _onControllerInitialized();
-      } catch (e, stackTrace) {
-        dev.log('Error switching video', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
-        setState(() => _isError = true);
-        widget.onError?.call();
       }
+
+      if (!mounted) {
+        dev.log('Widget unmounted during controller switch', name: 'HLSVideoPlayer');
+        await newController.dispose();
+        return;
+      }
+
+      // Set up new controller before disposing old one
+      setState(() {
+        _controller = newController!;  // We know it's not null at this point
+        _isInitialized = true;
+        _isError = false;
+        _aspectRatio = newController.value.aspectRatio;
+      });
+
+      // Start buffer progress tracking for new video
+      _startBufferCheck();
+      
+      // Setup listeners for new controller
+      newController.addListener(_onVideoProgress);
+
+      // Start playing if autoplay is enabled
+      if (widget.autoplay) {
+        await newController.play();
+        widget.onPlayingStateChanged?.call(true);
+      }
+
+      // Only dispose old controller after new one is fully set up
+      dev.log('Disposing old controller', name: 'HLSVideoPlayer');
+      await oldController.dispose();
+
+    } catch (e, stackTrace) {
+      dev.log('Error switching video', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
+      // If we failed to set up the new controller, keep the old one active
+      if (newController != null) {
+        await newController.dispose();
+      }
+      setState(() => _isError = true);
+      widget.onError?.call();
+      rethrow;
+    }
+  }
+
+  /// Ensures video is playing and controls are properly initialized
+  Future<void> ensurePlayback() async {
+    if (!mounted || !_isInitialized) return;
+
+    dev.log('Ensuring video playback', name: 'HLSVideoPlayer');
+    
+    try {
+      if (!_controller.value.isPlaying) {
+        await _controller.play();
+        widget.onPlayingStateChanged?.call(true);
+      }
+      
+      // Reset controls state
+      setState(() {
+        _showControls = false;
+        _isBuffering = false;
+      });
+    } catch (e, stackTrace) {
+      dev.log('Error ensuring playback', name: 'HLSVideoPlayer', error: e, stackTrace: stackTrace);
     }
   }
 
@@ -197,7 +243,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     dev.log('Disposing HLSVideoPlayer - videoId: ${widget.video.id}', name: 'HLSVideoPlayer');
     _bufferCheckTimer?.cancel();
     _controller.removeListener(_onVideoProgress);
-    _controller.dispose();
+    
+    // Dispose controller in background to avoid blocking
+    Future.microtask(() async {
+      await _controller.dispose();
+    });
+    
     super.dispose();
   }
 

@@ -175,7 +175,7 @@ class VideoRepository {
       var query = _firestore
           .collection(_collection)
           .orderBy('uploadedAt', descending: true)
-          .limit(1);
+          .limit(3);  // Fetch 3 videos at a time
 
       if (startAfter != null) {
         query = query.startAfterDocument(startAfter);
@@ -638,5 +638,14 @@ class VideoRepository {
           return true;
         })
         .toList();
+  }
+
+  // Get a video document by ID
+  Future<DocumentSnapshot?> getVideoDocumentById(String videoId) async {
+    try {
+      return await _firestore.collection(_collection).doc(videoId).get();
+    } catch (e) {
+      rethrow;
+    }
   }
 } 
