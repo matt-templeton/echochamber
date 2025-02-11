@@ -43,16 +43,21 @@ class BufferPoolConfig {
 class VideoBufferManager extends ChangeNotifier {
   final Map<String, VideoPlayerController> _bufferedVideos = {};
   final Map<String, double> _bufferProgress = {};
+  final Map<String, Duration> _videoPositions = {};
   String? _currentVideoId;
   bool _isProcessingRequest = false;
+  bool _isBufferingPaused = false;
 
   // Getters
   bool get isBuffering => _isProcessingRequest;
   Map<String, double> get bufferProgress => Map.unmodifiable(_bufferProgress);
   bool hasBufferedVideo(String videoId) => _bufferedVideos.containsKey(videoId);
+  Duration? getPosition(String videoId) => _videoPositions[videoId];
   
   /// Adds a video to the buffer, replacing any existing video
   Future<void> addToBuffer(Video video) async {
+    if (_isBufferingPaused) return;  // Don't add new videos while paused
+    
     dev.log('Adding video to buffer: ${video.id}', name: 'VideoBufferManager');
     
     if (_isProcessingRequest) {
@@ -90,6 +95,12 @@ class VideoBufferManager extends ChangeNotifier {
         _bufferedVideos[video.id] = controller;
         _bufferProgress[video.id] = 1.0;
         dev.log('Video added to buffer: ${video.id}', name: 'VideoBufferManager');
+        
+        // Restore position if we have it
+        final savedPosition = _videoPositions[video.id];
+        if (savedPosition != null) {
+          await controller.seekTo(savedPosition);
+        }
       } catch (e, stackTrace) {
         dev.log('Error initializing controller', 
           name: 'VideoBufferManager',
@@ -107,6 +118,7 @@ class VideoBufferManager extends ChangeNotifier {
 
   /// Updates the buffer progress for a specific video
   void updateBufferProgress(String videoId, double progress) {
+    if (_isBufferingPaused) return;  // Don't update progress while paused
     if (progress < 0.0 || progress > 1.0) {
       dev.log('Invalid buffer progress value: $progress', name: 'VideoBufferManager');
       return;
@@ -124,11 +136,16 @@ class VideoBufferManager extends ChangeNotifier {
   Future<void> _removeFromBuffer(String videoId) async {
     dev.log('Removing video from buffer: $videoId', name: 'VideoBufferManager');
     
-    final controller = _bufferedVideos.remove(videoId);
+    // Save position before removing
+    final controller = _bufferedVideos[videoId];
+    if (controller != null && controller.value.isInitialized) {
+      _videoPositions[videoId] = controller.value.position;
+    }
+    
     if (controller != null) {
-      await controller.pause();
       await controller.dispose();
     }
+    _bufferedVideos.remove(videoId);
     _bufferProgress.remove(videoId);
     
     if (_currentVideoId == videoId) {
@@ -138,6 +155,22 @@ class VideoBufferManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  void pauseBuffering() {
+    _isBufferingPaused = true;
+    
+    // Save current positions of all active videos
+    for (final entry in _bufferedVideos.entries) {
+      final controller = entry.value;
+      if (controller.value.isInitialized) {
+        _videoPositions[entry.key] = controller.value.position;
+      }
+    }
+  }
+
+  void resumeBuffering() {
+    _isBufferingPaused = false;
+  }
+
   @override
   void dispose() {
     for (final controller in _bufferedVideos.values) {
@@ -145,7 +178,12 @@ class VideoBufferManager extends ChangeNotifier {
     }
     _bufferedVideos.clear();
     _bufferProgress.clear();
+    _videoPositions.clear();
     super.dispose();
+  }
+
+  void savePosition(String videoId, Duration position) {
+    _videoPositions[videoId] = position;
   }
 }
 

@@ -2,8 +2,10 @@ import 'package:flutter/foundation.dart';
 import '../models/video_model.dart';
 import '../services/video_feed_service.dart';
 import '../repositories/video_repository.dart';
+import '../models/video_buffer_manager.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:video_player/video_player.dart';
 import 'dart:async';
 import 'dart:developer' as dev;
 
@@ -11,12 +13,14 @@ class VideoFeedProvider with ChangeNotifier {
   final VideoFeedService _feedService;
   final VideoRepository _videoRepository;
   final FirebaseAuth _auth;
+  final VideoBufferManager _bufferManager;
   Video? _currentVideo;
   Video? _nextVideo;
   Video? _previousVideo;
   bool _isLoading = false;
   bool _isControllerReady = false;
   bool _isEnabled = true;
+  bool _isPaused = false;
   String? _error;
   String _feedType = 'for_you'; // Default feed type
   bool _hasLiked = false;
@@ -31,7 +35,8 @@ class VideoFeedProvider with ChangeNotifier {
     FirebaseAuth? auth,
   }) : _feedService = feedService ?? VideoFeedService(),
        _videoRepository = videoRepository ?? VideoRepository(),
-       _auth = auth ?? FirebaseAuth.instance {
+       _auth = auth ?? FirebaseAuth.instance,
+       _bufferManager = VideoBufferManager() {
     // Don't initialize videos automatically
   }
 
@@ -45,10 +50,96 @@ class VideoFeedProvider with ChangeNotifier {
   WatchSession? get currentSession => _currentSession;
   bool get hasPreviousVideo => _previousVideo != null;
   bool get hasLiked => _hasLiked;
+  bool get isPaused => _isPaused;
 
   Future<void> waitForInitialization() async {
     if (_initCompleter != null) {
       await _initCompleter!.future;
+    }
+  }
+
+  VideoPlayerController? getBufferedVideo(String videoId) => _bufferManager.getBufferedVideo(videoId);
+  bool hasBufferedVideo(String videoId) => _bufferManager.hasBufferedVideo(videoId);
+  Map<String, double> get bufferProgress => _bufferManager.bufferProgress;
+
+  void updateBufferProgress(String videoId, double progress) {
+    _bufferManager.updateBufferProgress(videoId, progress);
+  }
+
+  void setEnabled(bool enabled) {
+    if (_isEnabled == enabled) return;
+    _isEnabled = enabled;
+    
+    // Schedule state changes for after the current build phase
+    Future.microtask(() async {
+      if (_isEnabled) {  // Check current state in case it changed
+        if (_isPaused) {
+          await _resumePlayback();
+        } else {
+          await _initializeVideos();
+        }
+      } else {
+        await _pausePlayback();
+      }
+      
+      notifyListeners();
+    });
+  }
+
+  Future<void> _pausePlayback() async {
+    _isPaused = true;
+    dev.log('Pausing video playback', name: 'VideoFeedProvider');
+    
+    // Save current position before pausing
+    if (_currentVideo != null) {
+      final currentController = _bufferManager.getBufferedVideo(_currentVideo!.id);
+      if (currentController != null && currentController.value.isInitialized) {
+        _bufferManager.savePosition(_currentVideo!.id, currentController.value.position);
+      }
+    }
+    
+    // Pause buffering but maintain buffers
+    _bufferManager.pauseBuffering();
+    
+    // Pause current video controller if exists
+    final currentController = _bufferManager.getBufferedVideo(_currentVideo?.id ?? '');
+    if (currentController != null) {
+      await currentController.pause();
+    }
+    
+    // Maintain state but pause activity
+    if (_currentSession != null) {
+      await endCurrentSession(false);
+    }
+  }
+
+  Future<void> _resumePlayback() async {
+    _isPaused = false;
+    dev.log('Resuming video playback', name: 'VideoFeedProvider');
+    
+    // Resume buffering
+    _bufferManager.resumeBuffering();
+    
+    // Resume current video if exists
+    if (_currentVideo != null) {
+      final currentController = _bufferManager.getBufferedVideo(_currentVideo!.id);
+      if (currentController != null) {
+        // Restore position if available
+        final savedPosition = _bufferManager.getPosition(_currentVideo!.id);
+        if (savedPosition != null) {
+          await currentController.seekTo(savedPosition);
+        }
+        await currentController.play();
+        _setControllerReady(true);
+      } else {
+        // If controller was disposed, reinitialize
+        await _bufferManager.addToBuffer(_currentVideo!);
+      }
+    }
+    
+    // Resume session if needed
+    if (_currentVideo != null && _auth.currentUser != null) {
+      await startWatchSession();
     }
   }
 
@@ -68,6 +159,9 @@ class VideoFeedProvider with ChangeNotifier {
       dev.log('Loaded first video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
       
       if (_currentVideo != null) {
+        // Add current video to buffer
+        await _bufferManager.addToBuffer(_currentVideo!);
+        
         // Pre-fetch next video
         dev.log('Pre-fetching next video', name: 'VideoFeedProvider');
         _nextVideo = await _feedService.getNextVideo();
@@ -208,6 +302,12 @@ class VideoFeedProvider with ChangeNotifier {
       });
     }
     _setControllerReady(ready);
+    
+    if (ready) {
+      _startPositionTracking();
+    } else {
+      _positionUpdateTimer?.cancel();
+    }
   }
 
   void resetFeed() {
@@ -423,49 +523,26 @@ class VideoFeedProvider with ChangeNotifier {
     }
   }
 
-  void setEnabled(bool enabled) {
-    if (_isEnabled == enabled) return;
-    _isEnabled = enabled;
-    
-    if (enabled) {
-      // Schedule initialization for next frame to avoid tree lock issues
-      Future.microtask(() {
-        if (_isEnabled) { // Check if still enabled
-          _initializeVideos();
-        }
-      });
-    } else {
-      // Cleanup resources
-      _currentVideo = null;
-      _nextVideo = null;
-      _previousVideo = null;
-      _error = null;
-      _currentVideoId = null;
-      _setControllerReady(false);
-      if (_currentSession != null) {
-        endCurrentSession(false).catchError((e) {
-          dev.log('Error ending session during disable: $e', 
-            name: 'VideoFeedProvider', 
-            error: e);
-        });
-      }
-      _positionUpdateTimer?.cancel();
-      
-      // Notify listeners on next frame
-      Future.microtask(() {
-        if (!_isEnabled) { // Check if still disabled
-          notifyListeners();
-        }
-      });
-    }
-  }
-
   @override
   void dispose() {
     _positionUpdateTimer?.cancel();
     if (_currentSession != null) {
       endCurrentSession(false);
     }
+    _bufferManager.dispose();
     super.dispose();
+  }
+
+  // Add position tracking timer
+  void _startPositionTracking() {
+    _positionUpdateTimer?.cancel();
+    _positionUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_currentVideo != null) {
+        final controller = _bufferManager.getBufferedVideo(_currentVideo!.id);
+        if (controller != null && controller.value.isInitialized) {
+          _bufferManager.savePosition(_currentVideo!.id, controller.value.position);
+        }
+      }
+    });
   }
 } 

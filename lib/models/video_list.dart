@@ -122,6 +122,19 @@ class VideoList extends ChangeNotifier {
     return _videos[index];
   }
 
+  /// Updates a video at a specific index
+  /// Returns true if update was successful, false if index is out of bounds
+  bool updateVideo(int index, Video video) {
+    if (index < 0 || index >= _videos.length) {
+      dev.log('Cannot update video: index $index out of bounds', name: 'VideoList');
+      return false;
+    }
+    _videos[index] = video;
+    dev.log('Updated video at index $index: ${video.id}', name: 'VideoList');
+    notifyListeners();
+    return true;
+  }
+
   /// Clears the list and resets the current index
   void clear() {
     _videos.clear();

@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../providers/video_feed_provider.dart';
+import '../../navigation/screen_state.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? initialVideoId;
@@ -29,21 +30,29 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final VideoList _videoList;
-  late final VideoBufferManager _bufferManager;
   late final VideoRepository _repository;
   late final PageController _pageController;
   late final VideoFeedProvider _videoFeedProvider;
+  late final NavigationStateManager _navigationManager;
+  late final HomeScreenState _screenState;
   GlobalKey<HLSVideoPlayerState> _playerKey = GlobalKey();
   
   bool _isLoading = false;
   bool _hasMoreVideos = true;
   bool _isTransitioning = false;
   bool _hasLiked = false;
+  bool _isInitialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _videoFeedProvider = context.read<VideoFeedProvider>();
+    if (!_isInitialized) {
+      _videoFeedProvider = context.read<VideoFeedProvider>();
+      _navigationManager = NavigationStateManager();
+      _screenState = HomeScreenState(_videoFeedProvider);
+      _navigationManager.navigateToScreen(_screenState);
+      _isInitialized = true;
+    }
   }
 
   @override
@@ -52,19 +61,10 @@ class _HomeScreenState extends State<HomeScreen> {
     dev.log('HomeScreen initialized', name: 'HomeScreen');
     
     _videoList = VideoList(maxLength: 10);
-    _bufferManager = VideoBufferManager();
     _repository = VideoRepository();
     _pageController = PageController();
     
-    // Schedule enabling video feed provider after build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _videoFeedProvider.setEnabled(true);
-      }
-    });
-    
     _initializeVideoFeed().then((_) {
-      // Check initial like status after feed is initialized
       _checkLikeStatus();
     });
   }
@@ -76,7 +76,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final video = await _repository.getVideoById(widget.initialVideoId!);
       if (video != null) {
         _videoList.addVideo(video);
-        _bufferManager.addToBuffer(video);
       }
     }
     
@@ -103,12 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       for (final doc in snapshot.docs) {
         final video = Video.fromFirestore(doc);
-        final wasAdded = _videoList.addVideo(video);
-        
-        // Only buffer the first video initially
-        if (wasAdded && _videoList.length == 1) {
-          await _bufferManager.addToBuffer(video);
-        }
+        _videoList.addVideo(video);
       }
     } catch (e, stackTrace) {
       dev.log('Error loading videos', 
@@ -150,13 +144,10 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {});
       }
 
-      // Buffer new video
-      await _bufferManager.addToBuffer(targetVideo);
-      
       if (_playerKey.currentState != null) {
         await _playerKey.currentState!.switchToVideo(
           targetVideo,
-          preloadedController: _bufferManager.getBufferedVideo(targetVideo.id),
+          preloadedController: _videoFeedProvider.getBufferedVideo(targetVideo.id),
         );
       }
 
@@ -218,6 +209,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _onBufferProgress(String videoId, double progress) {
+    _videoFeedProvider.updateBufferProgress(videoId, progress);
+  }
+
   Future<void> _toggleLike() async {
     if (_videoList.currentVideo == null) return;
     
@@ -242,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final updatedVideo = _videoList.currentVideo!.copyWith(
               likesCount: _videoList.currentVideo!.likesCount - 1
             );
-            _videoList.videos[_videoList.currentIndex] = updatedVideo;
+            _videoList.updateVideo(_videoList.currentIndex, updatedVideo);
           });
           dev.log('Successfully unliked video', name: 'HomeScreen');
         }
@@ -256,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final updatedVideo = _videoList.currentVideo!.copyWith(
               likesCount: _videoList.currentVideo!.likesCount + 1
             );
-            _videoList.videos[_videoList.currentIndex] = updatedVideo;
+            _videoList.updateVideo(_videoList.currentIndex, updatedVideo);
           });
           dev.log('Successfully liked video', name: 'HomeScreen');
         }
@@ -269,16 +264,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _onBufferProgress(String videoId, double progress) {
-    _bufferManager.updateBufferProgress(videoId, progress);
-  }
-
   @override
   void dispose() {
-    // Disable video feed provider using stored reference
-    _videoFeedProvider.setEnabled(false);
+    _screenState.onExit();
     _pageController.dispose();
-    _bufferManager.dispose();
     super.dispose();
   }
 
@@ -308,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: HLSVideoPlayer(
                     key: isCurrentVideo ? _playerKey : null,
                     video: video,
-                    preloadedController: _bufferManager.getBufferedVideo(video.id),
+                    preloadedController: _videoFeedProvider.getBufferedVideo(video.id),
                     autoplay: isCurrentVideo,
                     onBufferProgress: (progress) => _onBufferProgress(video.id, progress),
                   ),
@@ -453,12 +442,12 @@ class _HomeScreenState extends State<HomeScreen> {
         bottomNavigationBar: PrimaryNavBar(
         selectedIndex: 0,  // Home is selected
           onItemSelected: (index) {
-          if (index == 4) {  // Profile tab
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (context) => const ProfileScreen(),
-                  ),
-                );
+            if (index == 4) {  // Profile tab
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => const ProfileScreen(),
+                ),
+              );
             }
           },
       ),

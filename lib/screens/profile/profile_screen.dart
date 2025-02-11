@@ -11,15 +11,21 @@ import '../../widgets/notification_settings_sheet.dart';
 import '../../services/firebase_service.dart';
 import '../../repositories/user_repository.dart';
 import '../home/home_screen.dart';
+import 'dart:developer' as dev;
+import '../../navigation/screen_state.dart';
+import '../../providers/video_feed_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({Key? key}) : super(key: key);
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  late final VideoFeedProvider _videoFeedProvider;
+  late final NavigationStateManager _navigationManager;
+  late final ProfileScreenState _screenState;
   int _selectedIndex = 4; // Profile tab index
   final _formKey = GlobalKey<FormState>();
   final _bioController = TextEditingController();
@@ -29,6 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _youtubeController = TextEditingController();
   bool _isSaving = false;
   bool _isLoading = true;
+  bool _isInitialized = false;
 
   // Add regex patterns for social media validation
   static final RegExp _twitterUsernameRegex = RegExp(r'^@?[a-zA-Z0-9_]{1,15}$');
@@ -85,6 +92,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      _videoFeedProvider = context.read<VideoFeedProvider>();
+      _navigationManager = NavigationStateManager();
+      _screenState = ProfileScreenState(_videoFeedProvider);
+      _navigationManager.navigateToScreen(_screenState);
+      _isInitialized = true;
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadUserData();
@@ -92,13 +111,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      dev.log('No authenticated user found', name: 'ProfileScreen');
+      return;
+    }
 
     try {
+      dev.log('Starting to load user data for ID: ${user.uid}', name: 'ProfileScreen');
       final userRepository = UserRepository();
       final userData = await userRepository.getUserById(user.uid);
 
       if (userData != null && mounted) {
+        dev.log('Successfully loaded user data', name: 'ProfileScreen');
         setState(() {
           _nameController.text = userData.name;
           _bioController.text = userData.bio ?? '';
@@ -112,13 +136,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           
           _isLoading = false;
         });
+      } else {
+        dev.log('No user data found or widget unmounted', 
+          name: 'ProfileScreen',
+          error: 'userData: ${userData != null}, mounted: $mounted');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      dev.log(
+        'Failed to load profile data',
+        name: 'ProfileScreen',
+        error: e,
+        stackTrace: stackTrace
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load profile data')),
+          SnackBar(content: Text('Failed to load profile data: $e')),
         );
-        _isLoading = false;
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -130,6 +164,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _twitterController.dispose();
     _instagramController.dispose();
     _youtubeController.dispose();
+    _screenState.onExit();
     super.dispose();
   }
 

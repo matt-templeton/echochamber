@@ -43,6 +43,24 @@ class User {
   // Create a User from a Firestore document
   factory User.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    
+    // Handle stats map that might contain string values
+    Map<String, int>? statsMap;
+    if (data['stats'] != null) {
+      statsMap = {};
+      final rawStats = data['stats'] as Map;
+      rawStats.forEach((key, value) {
+        // Convert value to int if it's a string
+        if (value is String) {
+          statsMap![key as String] = int.tryParse(value) ?? 0;
+        } else if (value is int) {
+          statsMap![key as String] = value;
+        } else {
+          statsMap![key as String] = 0; // Default value for invalid types
+        }
+      });
+    }
+
     return User(
       id: doc.id,
       name: data['name'] as String,
@@ -61,9 +79,7 @@ class User {
           ? Map<String, bool>.from(data['onboardingProgress'] as Map)
           : null,
       monetization: data['monetization'] as Map<String, dynamic>?,
-      stats: data['stats'] != null 
-          ? Map<String, int>.from(data['stats'] as Map)
-          : null,
+      stats: statsMap,
       recentVideos: data['recentVideos'] != null 
           ? List<Map<String, dynamic>>.from(data['recentVideos'] as List)
           : null,

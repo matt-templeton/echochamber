@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
+import 'dart:developer' as dev;
 
 class UserRepository {
   final FirebaseFirestore _firestore;
@@ -10,8 +11,24 @@ class UserRepository {
 
   // Get a user by ID
   Future<User?> getUserById(String userId) async {
-    final doc = await _firestore.collection(_collection).doc(userId).get();
-    return doc.exists ? User.fromFirestore(doc) : null;
+    try {
+      dev.log('Fetching user data for ID: $userId', name: 'UserRepository');
+      final doc = await _firestore.collection(_collection).doc(userId).get();
+      if (!doc.exists) {
+        dev.log('No user document found for ID: $userId', name: 'UserRepository');
+        return null;
+      }
+      dev.log('Successfully fetched user data for ID: $userId', name: 'UserRepository');
+      return User.fromFirestore(doc);
+    } catch (e, stackTrace) {
+      dev.log(
+        'Error fetching user data',
+        name: 'UserRepository',
+        error: e,
+        stackTrace: stackTrace
+      );
+      rethrow;
+    }
   }
 
   // Create a new user
