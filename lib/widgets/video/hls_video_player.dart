@@ -67,6 +67,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _isError = false;
   bool _isBuffering = false;
   bool _showControls = false;
+  bool _isDragging = false;
+  bool _wasPlayingBeforeDrag = false;
   double _aspectRatio = 16 / 9;
   Timer? _bufferCheckTimer;
   final _initializationCompleter = Completer<void>();
@@ -336,27 +338,79 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     return Container(
       height: 20,
       color: Colors.black38,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final duration = _controller.value.duration;
-          final position = _controller.value.position;
-          final progress = position.inMilliseconds / duration.inMilliseconds;
-
-          return CustomPaint(
-            painter: VideoProgressBarPainter(
-              progress: progress,
-              buffered: _controller.value.buffered.map((range) {
-                return BufferedRange(
-                  start: range.start.inMilliseconds / duration.inMilliseconds,
-                  end: range.end.inMilliseconds / duration.inMilliseconds,
-                );
-              }).toList(),
-              backgroundColor: Colors.white24,
-              bufferedColor: Colors.white38,
-              progressColor: Colors.white,
-            ),
-          );
+      child: GestureDetector(
+        onHorizontalDragStart: (DragStartDetails details) {
+          setState(() {
+            _isDragging = true;
+            _wasPlayingBeforeDrag = _controller.value.isPlaying;
+          });
+          if (_wasPlayingBeforeDrag) {
+            _controller.pause();
+          }
         },
+        onHorizontalDragUpdate: (DragUpdateDetails details) {
+          if (!_isDragging) return;
+          
+          final RenderBox renderBox = context.findRenderObject() as RenderBox;
+          final double width = renderBox.size.width;
+          final double localX = details.localPosition.dx;
+          final double progress = localX / width;
+          
+          // Ensure progress is between 0 and 1
+          final double clampedProgress = progress.clamp(0.0, 1.0);
+          
+          // Calculate the target position
+          final Duration targetPosition = _controller.value.duration * clampedProgress;
+          
+          // Seek to the target position
+          _controller.seekTo(targetPosition);
+        },
+        onHorizontalDragEnd: (DragEndDetails details) {
+          if (_wasPlayingBeforeDrag) {
+            _controller.play();
+          }
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        onTapDown: (TapDownDetails details) {
+          final RenderBox renderBox = context.findRenderObject() as RenderBox;
+          final double width = renderBox.size.width;
+          final double localX = details.localPosition.dx;
+          final double progress = localX / width;
+          
+          // Ensure progress is between 0 and 1
+          final double clampedProgress = progress.clamp(0.0, 1.0);
+          
+          // Calculate the target position
+          final Duration targetPosition = _controller.value.duration * clampedProgress;
+          
+          // Seek to the target position
+          _controller.seekTo(targetPosition);
+        },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final duration = _controller.value.duration;
+            final position = _controller.value.position;
+            final progress = position.inMilliseconds / duration.inMilliseconds;
+
+            return CustomPaint(
+              painter: VideoProgressBarPainter(
+                progress: progress,
+                buffered: _controller.value.buffered.map((range) {
+                  return BufferedRange(
+                    start: range.start.inMilliseconds / duration.inMilliseconds,
+                    end: range.end.inMilliseconds / duration.inMilliseconds,
+                  );
+                }).toList(),
+                backgroundColor: Colors.white24,
+                bufferedColor: Colors.white38,
+                progressColor: Colors.white,
+                isDragging: _isDragging,
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -375,6 +429,7 @@ class VideoProgressBarPainter extends CustomPainter {
   final Color backgroundColor;
   final Color bufferedColor;
   final Color progressColor;
+  final bool isDragging;
 
   VideoProgressBarPainter({
     required this.progress,
@@ -382,6 +437,7 @@ class VideoProgressBarPainter extends CustomPainter {
     required this.backgroundColor,
     required this.bufferedColor,
     required this.progressColor,
+    this.isDragging = false,
   });
 
   @override
@@ -429,11 +485,11 @@ class VideoProgressBarPainter extends CustomPainter {
     // Draw progress indicator ball - only if we have valid progress
     if (!progress.isNaN && progress >= 0.0 && progress <= 1.0) {
       paint
-        ..color = progressColor
+        ..color = isDragging ? progressColor.withOpacity(0.7) : progressColor
         ..style = PaintingStyle.fill;
       canvas.drawCircle(
         Offset(safeProgress * size.width, size.height / 2),
-        8.0,
+        isDragging ? 10.0 : 8.0,  // Make the ball slightly larger while dragging
         paint,
       );
     }
@@ -442,6 +498,7 @@ class VideoProgressBarPainter extends CustomPainter {
   @override
   bool shouldRepaint(VideoProgressBarPainter oldDelegate) {
     return progress != oldDelegate.progress ||
-           buffered != oldDelegate.buffered;
+           buffered != oldDelegate.buffered ||
+           isDragging != oldDelegate.isDragging;
   }
 } 

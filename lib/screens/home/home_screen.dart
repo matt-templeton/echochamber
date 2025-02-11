@@ -193,16 +193,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 final video = _videoList.videos[index];
                 final isCurrentVideo = index == _videoList.currentIndex;
                 
-                return Center(
-                  child: AspectRatio(
-                    aspectRatio: 9 / 16,
-                    child: HLSVideoPlayer(
-                      key: isCurrentVideo ? _playerKey : null,
-                      video: video,
-                      preloadedController: _bufferManager.getBufferedVideo(video.id),
-                      autoplay: isCurrentVideo,
-                      onBufferProgress: (progress) => _onBufferProgress(video.id, progress),
-                    ),
+                return SizedBox.expand(
+                  child: HLSVideoPlayer(
+                    key: isCurrentVideo ? _playerKey : null,
+                    video: video,
+                    preloadedController: _bufferManager.getBufferedVideo(video.id),
+                    autoplay: isCurrentVideo,
+                    onBufferProgress: (progress) => _onBufferProgress(video.id, progress),
                   ),
                 );
               },
