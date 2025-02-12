@@ -5,6 +5,7 @@ import '../../models/video_model.dart';
 import '../../providers/video_feed_provider.dart';
 import 'dart:async';
 import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Represents a quality variant with its properties
 class QualityVariant {
@@ -55,7 +56,7 @@ class HLSVideoPlayer extends StatefulWidget {
 }
 
 class HLSVideoPlayerState extends State<HLSVideoPlayer> {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isError = false;
   bool _isBuffering = false;
@@ -63,11 +64,17 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _isDragging = false;
   bool _wasPlayingBeforeDrag = false;
   bool _isDisposed = false;
+  bool _hasUserInteracted = false;
   double _aspectRatio = 16 / 9;
+  Timer? _hideControlsTimer;
 
   @override
   void initState() {
     super.initState();
+    // Always show controls initially on web
+    if (kIsWeb) {
+      _showControls = true;
+    }
     _initializePlayer();
   }
 
@@ -76,7 +83,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       name: 'HLSVideoPlayer');
     
     try {
-      _controller = VideoPlayerController.network(
+      final controller = VideoPlayerController.network(
         widget.video.videoUrl,
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: false,
@@ -84,18 +91,32 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         ),
       );
 
-      await _controller.initialize();
+      _controller = controller;
+
+      // Set initial volume to 0 on web to allow autoplay
+      if (kIsWeb) {
+        await controller.setVolume(0);
+      }
+
+      await controller.initialize();
       if (!mounted) return;
       
       setState(() {
         _isInitialized = true;
-        _aspectRatio = _controller.value.aspectRatio;
+        _aspectRatio = controller.value.aspectRatio;
       });
 
-      _controller.addListener(_onVideoProgress);
+      controller.addListener(_onVideoProgress);
 
       if (widget.autoplay) {
-        _controller.play();
+        if (kIsWeb) {
+          // Web autoplay: start muted
+          controller.play();
+          // Start hide timer after play starts
+          _startHideControlsTimer();
+        } else {
+          controller.play();
+        }
       }
 
     } catch (e, stackTrace) {
@@ -109,30 +130,42 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     }
   }
 
-  void _onVideoProgress() {
-    if (_isDisposed) return;
-    if (!mounted || !_controller.value.isInitialized) return;
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    final controller = _controller;
+    if (controller != null && controller.value.isPlaying) {
+      _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted && !_isDragging) {
+          setState(() => _showControls = false);
+        }
+      });
+    }
+  }
 
-    if (_controller.value.hasError) {
+  void _onVideoProgress() {
+    final controller = _controller;
+    if (_isDisposed || controller == null) return;
+    if (!mounted || !controller.value.isInitialized) return;
+
+    if (controller.value.hasError) {
       dev.log('Video controller reported error',
         name: 'HLSVideoPlayer',
-        error: _controller.value.errorDescription);
+        error: controller.value.errorDescription);
       return;
     }
 
-    if (_controller.value.position >= _controller.value.duration) {
+    if (controller.value.position >= controller.value.duration) {
       dev.log('Video reached end', name: 'HLSVideoPlayer');
       
       // Reset video position to beginning
-      _controller.seekTo(Duration.zero);
-      _controller.pause();
-      
+      controller.seekTo(Duration.zero);
+      controller.pause();
       
       // Move to next video
       context.read<VideoFeedProvider>().moveToNextVideo();
     }
 
-    final isBuffering = _controller.value.isBuffering;
+    final isBuffering = controller.value.isBuffering;
     if (_isBuffering != isBuffering && !_isDisposed) {
       setState(() => _isBuffering = isBuffering);
     }
@@ -142,10 +175,22 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     }
   }
 
+  void _handleTap() {
+    setState(() {
+      _showControls = !_showControls;
+      if (_showControls) {
+        _startHideControlsTimer();
+      } else {
+        _hideControlsTimer?.cancel();
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _hideControlsTimer?.cancel();
     _isDisposed = true;
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -155,7 +200,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     
     if (widget.video.id != oldWidget.video.id) {
       // Video changed, reinitialize player
-      _controller.dispose();
+      _controller?.dispose();
       _initializePlayer();
     }
   }
@@ -172,34 +217,77 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       );
     }
 
-    return GestureDetector(
-      onTap: () {
-        setState(() => _showControls = !_showControls);
-      },
-      child: AspectRatio(
-        aspectRatio: _aspectRatio,
-        child: Stack(
-          children: [
-            VideoPlayer(_controller),
-            if (_isBuffering)
-              const Center(child: CircularProgressIndicator()),
-            if (_showControls && widget.showControls)
-              _buildControls(),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _buildProgressBar(),
-            ),
-          ],
+    return SizedBox.expand(
+      child: MouseRegion(
+        onHover: (_) {
+          if (!_showControls && mounted && _isInitialized) {
+            setState(() => _showControls = true);
+            _startHideControlsTimer();
+          }
+        },
+        child: GestureDetector(
+          onTap: _handleTap,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _aspectRatio,
+                  child: VideoPlayer(_controller!),
+                ),
+              ),
+              if (_isBuffering)
+                const Center(child: CircularProgressIndicator()),
+              Positioned.fill(
+                child: AnimatedOpacity(
+                  opacity: _showControls ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: IgnorePointer(
+                    ignoring: !_showControls,
+                    child: Stack(
+                      children: [
+                        // Gradient overlay for better contrast
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.7),
+                                Colors.transparent,
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.7),
+                              ],
+                              stops: const [0.0, 0.2, 0.8, 1.0],
+                            ),
+                          ),
+                        ),
+                        if (widget.showControls)
+                          Center(child: _buildControls()),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: _buildProgressBar(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildControls() {
+    final controller = _controller;
+    if (controller == null) return const SizedBox.shrink();
+
     return Container(
-      color: Colors.black26,
+      color: Colors.transparent,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -209,24 +297,31 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
               IconButton(
                 icon: const Icon(Icons.replay_10, color: Colors.white, size: 30),
                 onPressed: () {
-                  final newPosition = _controller.value.position - const Duration(seconds: 10);
-                  _controller.seekTo(newPosition);
+                  final newPosition = controller.value.position - const Duration(seconds: 10);
+                  controller.seekTo(newPosition);
+                  _startHideControlsTimer();
                 },
               ),
               const SizedBox(width: 20),
               IconButton(
                 iconSize: 50,
                 icon: Icon(
-                  _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                  controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
                   color: Colors.white,
                 ),
                 onPressed: () {
-                  if (_controller.value.isPlaying) {
-                    _controller.pause();
+                  if (kIsWeb && !_hasUserInteracted) {
+                    _hasUserInteracted = true;
+                    controller.setVolume(1.0);
+                  }
+                  
+                  if (controller.value.isPlaying) {
+                    controller.pause();
                     setState(() => _showControls = true);
+                    _hideControlsTimer?.cancel();
                   } else {
-                    _controller.play();
-                    setState(() => _showControls = false);
+                    controller.play();
+                    _startHideControlsTimer();
                   }
                 },
               ),
@@ -234,10 +329,31 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
               IconButton(
                 icon: const Icon(Icons.forward_10, color: Colors.white, size: 30),
                 onPressed: () {
-                  final newPosition = _controller.value.position + const Duration(seconds: 10);
-                  _controller.seekTo(newPosition);
+                  final newPosition = controller.value.position + const Duration(seconds: 10);
+                  controller.seekTo(newPosition);
+                  _startHideControlsTimer();
                 },
               ),
+              if (kIsWeb) ...[
+                const SizedBox(width: 20),
+                IconButton(
+                  icon: Icon(
+                    controller.value.volume > 0 ? Icons.volume_up : Icons.volume_off,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                  onPressed: () {
+                    _hasUserInteracted = true;
+                    if (controller.value.volume > 0) {
+                      controller.setVolume(0);
+                    } else {
+                      controller.setVolume(1.0);
+                    }
+                    setState(() {});
+                    _startHideControlsTimer();
+                  },
+                ),
+              ],
             ],
           ),
         ],
@@ -246,83 +362,131 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   Widget _buildProgressBar() {
-    return Container(
-      height: 20,
-      color: Colors.black38,
-      child: GestureDetector(
-        onHorizontalDragStart: (DragStartDetails details) {
-          setState(() {
-            _isDragging = true;
-            _wasPlayingBeforeDrag = _controller.value.isPlaying;
-          });
-          if (_wasPlayingBeforeDrag) {
-            _controller.pause();
-          }
-        },
-        onHorizontalDragUpdate: (DragUpdateDetails details) {
-          if (!_isDragging) return;
-          
-          final RenderBox renderBox = context.findRenderObject() as RenderBox;
-          final double width = renderBox.size.width;
-          final double localX = details.localPosition.dx;
-          final double progress = localX / width;
-          
-          // Ensure progress is between 0 and 1
-          final double clampedProgress = progress.clamp(0.0, 1.0);
-          
-          // Calculate the target position
-          final Duration targetPosition = _controller.value.duration * clampedProgress;
-          
-          // Seek to the target position
-          _controller.seekTo(targetPosition);
-        },
-        onHorizontalDragEnd: (DragEndDetails details) {
-          if (_wasPlayingBeforeDrag) {
-            _controller.play();
-          }
-          setState(() {
-            _isDragging = false;
-          });
-        },
-        onTapDown: (TapDownDetails details) {
-          final RenderBox renderBox = context.findRenderObject() as RenderBox;
-          final double width = renderBox.size.width;
-          final double localX = details.localPosition.dx;
-          final double progress = localX / width;
-          
-          // Ensure progress is between 0 and 1
-          final double clampedProgress = progress.clamp(0.0, 1.0);
-          
-          // Calculate the target position
-          final Duration targetPosition = _controller.value.duration * clampedProgress;
-          
-          // Seek to the target position
-          _controller.seekTo(targetPosition);
-        },
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final duration = _controller.value.duration;
-            final position = _controller.value.position;
-            final progress = position.inMilliseconds / duration.inMilliseconds;
+    if (!mounted || !_isInitialized) {
+      return const SizedBox.shrink();
+    }
 
-            return CustomPaint(
-              painter: VideoProgressBarPainter(
-                progress: progress,
-                buffered: _controller.value.buffered.map((range) {
-                  return BufferedRange(
-                    start: range.start.inMilliseconds / duration.inMilliseconds,
-                    end: range.end.inMilliseconds / duration.inMilliseconds,
-                  );
-                }).toList(),
-                backgroundColor: Colors.white24,
-                bufferedColor: Colors.white38,
-                progressColor: Colors.white,
-                isDragging: _isDragging,
-              ),
-            );
-          },
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth == 0) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          color: Colors.black38,
+          child: GestureDetector(
+            onHorizontalDragStart: (DragStartDetails details) {
+              if (!mounted || !_isInitialized) return;
+              setState(() {
+                _isDragging = true;
+                _wasPlayingBeforeDrag = _controller!.value.isPlaying;
+              });
+              if (_wasPlayingBeforeDrag) {
+                _controller!.pause();
+              }
+            },
+            onHorizontalDragUpdate: (DragUpdateDetails details) {
+              if (!_isDragging || !mounted || !_isInitialized) return;
+              
+              final box = context.findRenderObject() as RenderBox?;
+              if (box == null || !box.hasSize) return;
+              
+              final double width = box.size.width;
+              final double localX = details.localPosition.dx;
+              final double progress = localX / width;
+              
+              // Ensure progress is between 0 and 1
+              final double clampedProgress = progress.clamp(0.0, 1.0);
+              
+              // Calculate the target position
+              final Duration targetPosition = _controller!.value.duration * clampedProgress;
+              
+              // Seek to the target position
+              _controller!.seekTo(targetPosition);
+            },
+            onHorizontalDragEnd: (DragEndDetails details) {
+              if (!mounted || !_isInitialized) return;
+              if (_wasPlayingBeforeDrag) {
+                _controller!.play();
+              }
+              setState(() {
+                _isDragging = false;
+              });
+            },
+            onTapDown: (TapDownDetails details) {
+              if (!mounted || !_isInitialized) return;
+              
+              final box = context.findRenderObject() as RenderBox?;
+              if (box == null || !box.hasSize) return;
+              
+              final double width = box.size.width;
+              final double localX = details.localPosition.dx;
+              final double progress = localX / width;
+              
+              // Ensure progress is between 0 and 1
+              final double clampedProgress = progress.clamp(0.0, 1.0);
+              
+              // Calculate the target position
+              final Duration targetPosition = _controller!.value.duration * clampedProgress;
+              
+              // Seek to the target position
+              _controller!.seekTo(targetPosition);
+            },
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                if (!mounted || !_isInitialized || constraints.maxWidth == 0) {
+                  return const SizedBox.shrink();
+                }
+
+                final duration = _controller!.value.duration;
+                final position = _controller!.value.position;
+                final progress = position.inMilliseconds / duration.inMilliseconds;
+
+                return Stack(
+                  children: [
+                    // Background
+                    Container(
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      color: Colors.white24,
+                    ),
+                    // Progress
+                    Container(
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      width: constraints.maxWidth * progress,
+                      color: Colors.white,
+                    ),
+                    // Progress indicator ball
+                    if (constraints.maxWidth > 0)
+                      Positioned(
+                        left: (constraints.maxWidth * progress - 8).clamp(0, constraints.maxWidth - 16),
+                        top: 2,
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.5),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }
