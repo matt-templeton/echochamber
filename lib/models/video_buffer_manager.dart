@@ -92,6 +92,8 @@ class VideoBufferManager extends ChangeNotifier {
 
       try {
         await controller.initialize();
+        dev.log('Controller initialized for: ${video.id}', name: 'VideoBufferManager');
+        dev.log('Controller: ${controller}', name: 'VideoBufferManager');
         _bufferedVideos[video.id] = controller;
         _bufferProgress[video.id] = 1.0;
         dev.log('Video added to buffer: ${video.id}', name: 'VideoBufferManager');
@@ -123,7 +125,7 @@ class VideoBufferManager extends ChangeNotifier {
       dev.log('Invalid buffer progress value: $progress', name: 'VideoBufferManager');
       return;
     }
-
+    dev.log('getBufferedVideo: ${getBufferedVideo(videoId)}', name: 'VideoBufferManager');
     _bufferProgress[videoId] = progress;
     notifyListeners();
   }

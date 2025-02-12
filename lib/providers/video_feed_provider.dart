@@ -93,7 +93,8 @@ class VideoFeedProvider with ChangeNotifier {
     // Save current position before pausing
     if (_currentVideo != null) {
       final currentController = _bufferManager.getBufferedVideo(_currentVideo!.id);
-      if (currentController != null && currentController.value.isInitialized) {
+      dev.log('currentController: ${currentController}', name: 'VideoFeedProvider');
+      if (currentController  != null && currentController.value.isInitialized) {
         _bufferManager.savePosition(_currentVideo!.id, currentController.value.position);
       }
     }
@@ -293,22 +294,22 @@ class VideoFeedProvider with ChangeNotifier {
     }
   }
 
-  void setControllerReady(bool ready) {
-    dev.log('Setting controller ready state to: $ready', name: 'VideoFeedProvider');
-    if (!ready && _currentSession != null) {
-      // Ensure we cleanup any existing session when controller becomes not ready
-      endCurrentSession(false).catchError((e) {
-        dev.log('Error ending session: $e', name: 'VideoFeedProvider', error: e);
-      });
-    }
-    _setControllerReady(ready);
+  // void setControllerReady(bool ready) {
+  //   dev.log('Setting controller ready state to: $ready', name: 'VideoFeedProvider');
+  //   if (!ready && _currentSession != null) {
+  //     // Ensure we cleanup any existing session when controller becomes not ready
+  //     endCurrentSession(false).catchError((e) {
+  //       dev.log('Error ending session: $e', name: 'VideoFeedProvider', error: e);
+  //     });
+  //   }
+  //   _setControllerReady(ready);
     
-    if (ready) {
-      _startPositionTracking();
-    } else {
-      _positionUpdateTimer?.cancel();
-    }
-  }
+  //   if (ready) {
+  //     _startPositionTracking();
+  //   } else {
+  //     _positionUpdateTimer?.cancel();
+  //   }
+  // }
 
   void resetFeed() {
     _feedService.resetFeed();
@@ -325,23 +326,24 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   void _setControllerReady(bool ready) {
+    dev.log('_setControllerReady called with: $ready currently: $_isControllerReady', name: 'VideoFeedProvider');
     if (_isControllerReady != ready) {
       _isControllerReady = ready;
       notifyListeners();
     }
   }
 
-  void setFeedType(String type) {
-    if (type != _feedType) {
-      _feedType = type;
-      _feedService.resetFeed();
-      _currentVideo = null;
-      _nextVideo = null;
-      _error = null;
-      _setControllerReady(false);
-      _initializeVideos();
-    }
-  }
+  // void setFeedType(String type) {
+  //   if (type != _feedType) {
+  //     _feedType = type;
+  //     _feedService.resetFeed();
+  //     _currentVideo = null;
+  //     _nextVideo = null;
+  //     _error = null;
+  //     _setControllerReady(false);
+  //     _initializeVideos();
+  //   }
+  // }
 
   Future<void> startWatchSession() async {
     if (_currentVideo == null || _currentSession != null) return;
@@ -436,22 +438,22 @@ class VideoFeedProvider with ChangeNotifier {
     }
   }
 
-  // Add cleanup method for video sessions
-  Future<void> cleanupVideoSession(String videoId) async {
-    dev.log('Cleaning up video session for videoId: $videoId', name: 'VideoFeedProvider');
-    try {
-      // Only cleanup if this is the current video
-      if (_currentVideoId == videoId) {
-        if (_currentSession != null) {
-          await endCurrentSession(false);
-        }
-        _currentVideoId = null;
-        setControllerReady(false);
-      }
-    } catch (e, stackTrace) {
-      dev.log('Error cleaning up video session', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
-    }
-  }
+  // // Add cleanup method for video sessions
+  // Future<void> cleanupVideoSession(String videoId) async {
+  //   dev.log('Cleaning up video session for videoId: $videoId', name: 'VideoFeedProvider');
+  //   try {
+  //     // Only cleanup if this is the current video
+  //     if (_currentVideoId == videoId) {
+  //       if (_currentSession != null) {
+  //         await endCurrentSession(false);
+  //       }
+  //       _currentVideoId = null;
+  //       setControllerReady(false);
+  //     }
+  //   } catch (e, stackTrace) {
+  //     dev.log('Error cleaning up video session', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
+  //   }
+  // }
 
   Stream<QuerySnapshot> getWatchHistory({
     int limit = 20,
@@ -534,15 +536,15 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   // Add position tracking timer
-  void _startPositionTracking() {
-    _positionUpdateTimer?.cancel();
-    _positionUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_currentVideo != null) {
-        final controller = _bufferManager.getBufferedVideo(_currentVideo!.id);
-        if (controller != null && controller.value.isInitialized) {
-          _bufferManager.savePosition(_currentVideo!.id, controller.value.position);
-        }
-      }
-    });
-  }
+  // void _startPositionTracking() {
+  //   _positionUpdateTimer?.cancel();
+  //   _positionUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+  //     if (_currentVideo != null) {
+  //       final controller = _bufferManager.getBufferedVideo(_currentVideo!.id);
+  //       if (controller != null && controller.value.isInitialized) {
+  //         _bufferManager.savePosition(_currentVideo!.id, controller.value.position);
+  //       }
+  //     }
+  //   });
+  // }
 } 
