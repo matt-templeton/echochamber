@@ -29,18 +29,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late final VideoList _videoList;
-  late final VideoRepository _repository;
   late final PageController _pageController;
   late final VideoFeedProvider _videoFeedProvider;
   late final NavigationStateManager _navigationManager;
   late final HomeScreenState _screenState;
   GlobalKey<HLSVideoPlayerState> _playerKey = GlobalKey();
   
-  bool _isLoading = false;
-  bool _hasMoreVideos = true;
   bool _isTransitioning = false;
-  bool _hasLiked = false;
+  bool _isVideoEndTransition = false;  // Track if transition was triggered by video end
   bool _isInitialized = false;
 
   @override
@@ -59,106 +55,63 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     dev.log('HomeScreen initialized', name: 'HomeScreen');
-    
-    _videoList = VideoList(maxLength: 10);
-    _repository = VideoRepository();
     _pageController = PageController();
     
-    _initializeVideoFeed().then((_) {
-      _checkLikeStatus();
-    });
-  }
-
-  Future<void> _initializeVideoFeed() async {
-    dev.log('Initializing video feed', name: 'HomeScreen');
-    
     if (widget.initialVideoId != null) {
-      final video = await _repository.getVideoById(widget.initialVideoId!);
-      if (video != null) {
-        _videoList.addVideo(video);
-      }
-    }
-    
-    await _loadMoreVideos();
-  }
-
-  Future<void> _loadMoreVideos() async {
-    if (_isLoading || !_hasMoreVideos) {
-      return;
-    }
-    
-    setState(() => _isLoading = true);
-    
-    try {
-      final snapshot = await _repository.getNextFeedVideo(
-        startAfter: _videoList.length > 0 ? 
-          await _repository.getVideoDocumentById(_videoList.videos.last.id) : null
-      );
-      
-      if (snapshot.docs.isEmpty) {
-        _hasMoreVideos = false;
-        return;
-      }
-
-      for (final doc in snapshot.docs) {
-        final video = Video.fromFirestore(doc);
-        _videoList.addVideo(video);
-      }
-    } catch (e, stackTrace) {
-      dev.log('Error loading videos', 
-        name: 'HomeScreen', 
-        error: e, 
-        stackTrace: stackTrace);
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      dev.log('Initial video ID provided: ${widget.initialVideoId}', name: 'HomeScreen');
     }
   }
 
   void _onPageChanged(int index) async {
-    if (_isTransitioning) {
+    dev.log('Page change triggered - index: $index, isVideoEnd: $_isVideoEndTransition', 
+      name: 'HomeScreen');
+    
+    // Only block concurrent manual transitions
+    // Allow transitions triggered by video end
+    if (_isTransitioning && !_isVideoEndTransition) {
+      dev.log('Ignoring manual page change - already transitioning', name: 'HomeScreen');
       return;
     }
     
     _isTransitioning = true;
-    dev.log('========== PAGE CHANGE EVENT ==========', name: 'HomeScreen');
     
     try {
-      if (index < 0 || index >= _videoList.length) {
+      // Always end current session before transition
+      await _videoFeedProvider.onVideoEnded();
+      dev.log('Ended previous video session', name: 'HomeScreen');
+      
+      // Ensure proper video switch
+      final success = await _videoFeedProvider.switchToVideo(index);
+      if (!success) {
+        dev.log('Failed to switch video in provider', name: 'HomeScreen');
         return;
       }
 
-      final targetVideo = _videoList.videos[index];
-      bool moved = false;
-      
-      if (index > _videoList.currentIndex) {
-        moved = _videoList.moveToNext();
-      } else if (index < _videoList.currentIndex) {
-        moved = _videoList.moveToPrevious();
-      }
-
-      if (!moved) return;
-
-      if (mounted) {
-        setState(() {});
-      }
-
       if (_playerKey.currentState != null) {
+        final targetVideo = _videoFeedProvider.videos[index];
+        dev.log('Switching video player to: ${targetVideo.id}', name: 'HomeScreen');
+        
+        final preloadedController = _videoFeedProvider.getBufferedVideo(targetVideo.id);
+        dev.log('Preloaded controller available: ${preloadedController != null}', 
+          name: 'HomeScreen');
+        
         await _playerKey.currentState!.switchToVideo(
           targetVideo,
-          preloadedController: _videoFeedProvider.getBufferedVideo(targetVideo.id),
+          preloadedController: preloadedController,
         );
+        
+        // Ensure autoplay after transition
+        if (preloadedController != null) {
+          dev.log('Starting playback of new video', name: 'HomeScreen');
+          await preloadedController.play();
+        } else {
+          dev.log('No controller available for autoplay', name: 'HomeScreen');
+        }
+        
+        dev.log('Successfully switched video player', name: 'HomeScreen');
+      } else {
+        dev.log('No video player state available', name: 'HomeScreen');
       }
-
-      // Check if the current video is liked
-      await _checkLikeStatus();
-
-      // Load more videos if needed
-      if (index >= _videoList.length - 2) {
-        await _loadMoreVideos();
-      }
-
     } catch (e, stackTrace) {
       dev.log(
         'Error during video switch',
@@ -168,100 +121,56 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       
       if (mounted) {
+        dev.log('Recreating video player key after error', name: 'HomeScreen');
         setState(() {
           _playerKey = GlobalKey<HLSVideoPlayerState>();
         });
       }
     } finally {
       _isTransitioning = false;
+      dev.log('Page change completed', name: 'HomeScreen');
     }
   }
 
-  Future<void> _checkLikeStatus() async {
-    if (_videoList.currentVideo == null) return;
-    
-    final auth = context.read<FirebaseAuth>();
-    final user = auth.currentUser;
-    if (user == null) {
-      dev.log('No user logged in when checking like status', name: 'HomeScreen');
+  void _onVideoEnd() async {
+    if (_isTransitioning) {
+      dev.log('Ignoring video end - already transitioning', name: 'HomeScreen');
       return;
     }
-
+    
+    dev.log('Video ended - starting transition', name: 'HomeScreen');
+    
     try {
-      dev.log('Checking like status for video: ${_videoList.currentVideo!.id}, user: ${user.uid}', 
-        name: 'HomeScreen');
+      _isVideoEndTransition = true;  // Signal this is an auto-transition
       
-      final hasLiked = await _repository.hasUserLikedVideo(
-        _videoList.currentVideo!.id,
-        user.uid,
-      );
+      // First ensure the current video session is ended
+      await _videoFeedProvider.onVideoEnded();
+      dev.log('Video session ended', name: 'HomeScreen');
       
-      dev.log('Like status result: $hasLiked', name: 'HomeScreen');
-      
-      if (mounted) {
-        setState(() => _hasLiked = hasLiked);
+      // Then trigger the page change
+      if (mounted && _pageController.hasClients) {
+        dev.log('Starting page transition animation', name: 'HomeScreen');
+        await _pageController.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+        // Note: Don't need to handle video switching here as _onPageChanged will be called
+        dev.log('Page transition animation completed', name: 'HomeScreen');
+      } else {
+        dev.log('Cannot transition page - widget unmounted or no page controller', 
+          name: 'HomeScreen');
       }
-    } catch (e, stackTrace) {
-      dev.log('Error checking like status: $e', 
-        name: 'HomeScreen',
-        error: e,
-        stackTrace: stackTrace);
+    } finally {
+      _isVideoEndTransition = false;  // Reset the flag
+      _isTransitioning = false;
+      dev.log('Video end handling completed', name: 'HomeScreen');
     }
   }
 
   void _onBufferProgress(String videoId, double progress) {
+    dev.log('Buffer progress - videoId: $videoId, progress: ${(progress * 100).toStringAsFixed(1)}%', 
+      name: 'HomeScreen');
     _videoFeedProvider.updateBufferProgress(videoId, progress);
-  }
-
-  Future<void> _toggleLike() async {
-    if (_videoList.currentVideo == null) return;
-    
-    final auth = context.read<FirebaseAuth>();
-    final user = auth.currentUser;
-    if (user == null) {
-      dev.log('No user logged in when attempting to like/unlike', name: 'HomeScreen');
-      return;
-    }
-
-    try {
-      dev.log('Toggling like for video: ${_videoList.currentVideo!.id}, user: ${user.uid}, current state: $_hasLiked', 
-        name: 'HomeScreen');
-      
-      if (_hasLiked) {
-        // Unlike the video
-        await _repository.unlikeVideo(_videoList.currentVideo!.id, user.uid);
-        if (mounted) {
-          setState(() {
-            _hasLiked = false;
-            // Update the video in the list with decremented like count
-            final updatedVideo = _videoList.currentVideo!.copyWith(
-              likesCount: _videoList.currentVideo!.likesCount - 1
-            );
-            _videoList.updateVideo(_videoList.currentIndex, updatedVideo);
-          });
-          dev.log('Successfully unliked video', name: 'HomeScreen');
-        }
-      } else {
-        // Like the video
-        await _repository.likeVideo(_videoList.currentVideo!.id, user.uid);
-        if (mounted) {
-          setState(() {
-            _hasLiked = true;
-            // Update the video in the list with incremented like count
-            final updatedVideo = _videoList.currentVideo!.copyWith(
-              likesCount: _videoList.currentVideo!.likesCount + 1
-            );
-            _videoList.updateVideo(_videoList.currentIndex, updatedVideo);
-          });
-          dev.log('Successfully liked video', name: 'HomeScreen');
-        }
-      }
-    } catch (e, stackTrace) {
-      dev.log('Error toggling like: $e', 
-        name: 'HomeScreen',
-        error: e,
-        stackTrace: stackTrace);
-    }
   }
 
   @override
@@ -275,31 +184,33 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<FirebaseAuth>();
     final isAuthenticated = auth.currentUser != null;
+    final videoFeed = context.watch<VideoFeedProvider>();
 
     return Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
+      backgroundColor: Colors.black,
+      body: Stack(
         fit: StackFit.expand,
-          children: [
+        children: [
           // Video Player with PageView for swipe gestures
           SizedBox.expand(
             child: PageView.builder(
               controller: _pageController,
               onPageChanged: _onPageChanged,
               scrollDirection: Axis.horizontal,
-              physics: const PageScrollPhysics(),
-              itemCount: _videoList.length,
+              physics: const PageScrollPhysics(),  // Keep swipe behavior
+              itemCount: videoFeed.videoCount,
               itemBuilder: (context, index) {
-                final video = _videoList.videos[index];
-                final isCurrentVideo = index == _videoList.currentIndex;
+                final video = videoFeed.videos[index];
+                final isCurrentVideo = index == videoFeed.currentIndex;
                 
                 return SizedBox.expand(
                   child: HLSVideoPlayer(
                     key: isCurrentVideo ? _playerKey : null,
                     video: video,
-                    preloadedController: _videoFeedProvider.getBufferedVideo(video.id),
+                    preloadedController: videoFeed.getBufferedVideo(video.id),
                     autoplay: isCurrentVideo,
                     onBufferProgress: (progress) => _onBufferProgress(video.id, progress),
+                    onVideoEnd: isCurrentVideo ? _onVideoEnd : null,
                   ),
                 );
               },
@@ -307,17 +218,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           // UI Overlay (Top)
-          Positioned(  // Use Positioned instead of SafeArea
+          Positioned(
             top: MediaQuery.of(context).padding.top,
             left: 0,
             right: 0,
             child: Container(
               height: 56,
-              child: Row(  // Use Row instead of Stack for better layout
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   IconButton(
-                          icon: const Icon(Icons.search, color: Colors.white),
+                    icon: const Icon(Icons.search, color: Colors.white),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => const SearchScreen(),
@@ -326,15 +237,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              ),
             ),
+          ),
 
-            // Video Info Overlay (Bottom)
-          if (_videoList.currentVideo != null)
+          // Video Info Overlay (Bottom)
+          if (videoFeed.currentVideo != null)
             Positioned(
               left: 16,
               right: 16,
-              bottom: 16 + MediaQuery.of(context).padding.bottom,  // Account for safe area
+              bottom: 16 + MediaQuery.of(context).padding.bottom,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -344,40 +255,40 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Video Info (Left)
                       Expanded(
                         child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                              '@${_videoList.currentVideo!.author['name']}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                          children: [
+                            Text(
+                              '@${videoFeed.currentVideo!.author['name']}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                              _videoList.currentVideo!.description,
-                            style: const TextStyle(color: Colors.white),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              videoFeed.currentVideo!.description,
+                              style: const TextStyle(color: Colors.white),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
                       // Interaction Buttons (Right)
                       Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
                             icon: Icon(
-                              _hasLiked ? Icons.favorite : Icons.favorite_border,
+                              videoFeed.hasLiked ? Icons.favorite : Icons.favorite_border,
                               color: isAuthenticated 
-                                ? (_hasLiked ? Colors.red : Colors.white)
+                                ? (videoFeed.hasLiked ? Colors.red : Colors.white)
                                 : Colors.white.withOpacity(0.5),
                             ),
                             iconSize: 30,
-                            onPressed: isAuthenticated ? _toggleLike : () {
+                            onPressed: isAuthenticated ? () => videoFeed.toggleLike() : () {
                               // Show login prompt
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -386,7 +297,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     label: 'Sign In',
                                     onPressed: () {
                                       // TODO: Navigate to sign in screen
-                                      // For now just show another message
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(
                                           content: Text('Sign in functionality coming soon'),
@@ -399,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                           ),
                           Text(
-                            '${_videoList.currentVideo!.likesCount}',
+                            '${videoFeed.currentVideo!.likesCount}',
                             style: TextStyle(
                               color: isAuthenticated 
                                 ? Colors.white 
@@ -416,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                           ),
                           Text(
-                            '${_videoList.currentVideo!.commentsCount}',
+                            '${videoFeed.currentVideo!.commentsCount}',
                             style: const TextStyle(color: Colors.white),
                           ),
                         ],
@@ -426,30 +336,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-
-          // Loading indicator
-          if (_isLoading)
-            const Positioned(
-              bottom: 100,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: CircularProgressIndicator(),
-              ),
-            ),
-          ],
-        ),
-        bottomNavigationBar: PrimaryNavBar(
+        ],
+      ),
+      bottomNavigationBar: PrimaryNavBar(
         selectedIndex: 0,  // Home is selected
-          onItemSelected: (index) {
-            if (index == 4) {  // Profile tab
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => const ProfileScreen(),
-                ),
-              );
-            }
-          },
+        onItemSelected: (index) {
+          if (index == 4) {  // Profile tab
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => const ProfileScreen(),
+              ),
+            );
+          }
+        },
       ),
     );
   }
