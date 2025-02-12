@@ -648,4 +648,11 @@ class VideoRepository {
       rethrow;
     }
   }
+
+  Future<QuerySnapshot> getAllVideos() async {
+    return _firestore
+      .collection('videos')
+      .orderBy('uploadedAt', descending: true)
+      .get();
+  }
 } 

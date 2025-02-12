@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
 import '../../models/video_model.dart';
+import '../../providers/video_feed_provider.dart';
 import 'dart:async';
 import 'dart:developer' as dev;
 
@@ -37,24 +38,16 @@ class PlaybackMetrics {
 
 class HLSVideoPlayer extends StatefulWidget {
   final Video video;
-  final VideoPlayerController? preloadedController;
   final bool autoplay;
   final bool showControls;
-  final Function(double)? onBufferProgress;
-  final Function(bool)? onPlayingStateChanged;
   final VoidCallback? onVideoEnd;
-  final VoidCallback? onError;
 
   const HLSVideoPlayer({
     Key? key,
     required this.video,
-    this.preloadedController,
     this.autoplay = true,
     this.showControls = true,
-    this.onBufferProgress,
-    this.onPlayingStateChanged,
     this.onVideoEnd,
-    this.onError,
   }) : super(key: key);
 
   @override
@@ -71,23 +64,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _wasPlayingBeforeDrag = false;
   bool _isDisposed = false;
   double _aspectRatio = 16 / 9;
-  Timer? _bufferCheckTimer;
-  final _initializationCompleter = Completer<void>();
-
-  Future<void> get initialized => _initializationCompleter.future;
 
   @override
   void initState() {
     super.initState();
-    dev.log('HLSVideoPlayer initState - videoId: ${widget.video.id}', 
-      name: 'HLSVideoPlayer');
-    
-    if (widget.preloadedController != null) {
-      _controller = widget.preloadedController!;
-      _onControllerInitialized();
-    } else {
-      _initializePlayer();
-    }
+    _initializePlayer();
   }
 
   Future<void> _initializePlayer() async {
@@ -106,7 +87,17 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       await _controller.initialize();
       if (!mounted) return;
       
-      _onControllerInitialized();
+      setState(() {
+        _isInitialized = true;
+        _aspectRatio = _controller.value.aspectRatio;
+      });
+
+      _controller.addListener(_onVideoProgress);
+
+      if (widget.autoplay) {
+        _controller.play();
+      }
+
     } catch (e, stackTrace) {
       dev.log('Error initializing video player: $e',
         name: 'HLSVideoPlayer',
@@ -114,45 +105,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         stackTrace: stackTrace);
       if (mounted) {
         setState(() => _isError = true);
-        widget.onError?.call();
       }
-      _initializationCompleter.completeError(e);
     }
-  }
-
-  void _onControllerInitialized() {
-    setState(() {
-      _isInitialized = true;
-      _aspectRatio = _controller.value.aspectRatio;
-    });
-
-    _startBufferCheck();
-    _controller.addListener(_onVideoProgress);
-
-    if (widget.autoplay) {
-      _controller.play();
-      widget.onPlayingStateChanged?.call(true);
-    }
-
-    _initializationCompleter.complete();
-  }
-
-  void _startBufferCheck() {
-    _bufferCheckTimer?.cancel();
-    _bufferCheckTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!mounted || !_controller.value.isInitialized) return;
-
-      final buffered = _controller.value.buffered;
-      if (buffered.isEmpty) return;
-
-      final duration = _controller.value.duration.inMilliseconds;
-      final bufferedMs = buffered.fold<int>(0, (sum, range) => 
-        sum + (range.end - range.start).inMilliseconds
-      );
-      final progress = bufferedMs / duration;
-      
-      widget.onBufferProgress?.call(progress);
-    });
   }
 
   void _onVideoProgress() {
@@ -168,24 +122,15 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
     if (_controller.value.position >= _controller.value.duration) {
       dev.log('Video reached end', name: 'HLSVideoPlayer');
-      widget.onVideoEnd?.call();
       
       // Reset video position to beginning
       _controller.seekTo(Duration.zero);
       _controller.pause();
       
-      // Find the nearest PageView and trigger page change
-      final pageController = _findPageController(context);
-      if (pageController != null) {
-        dev.log('Controller before: $_controller', name: 'HLSVideoPlayer');
-        pageController.nextPage(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-        dev.log('Controller after: $_controller', name: 'HLSVideoPlayer');
-      }
+      
+      // Move to next video
+      context.read<VideoFeedProvider>().moveToNextVideo();
     }
-    
 
     final isBuffering = _controller.value.isBuffering;
     if (_isBuffering != isBuffering && !_isDisposed) {
@@ -197,109 +142,21 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     }
   }
 
-  PageController? _findPageController(BuildContext context) {
-    try {
-      final pageView = context.findAncestorWidgetOfExactType<PageView>();
-      if (pageView != null) {
-        return pageView.controller;
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<void> cleanup() async {
-    if (_isDisposed) return;
-    
-    dev.log('Starting cleanup for HLSVideoPlayer - videoId: ${widget.video.id}',
-      name: 'HLSVideoPlayer');
-    
-    _bufferCheckTimer?.cancel();
-    _controller.removeListener(_onVideoProgress);
-    
-    try {
-      await _controller.pause();
-      await _controller.dispose();
-    } catch (e) {
-      dev.log('Error during cleanup: $e', name: 'HLSVideoPlayer');
-    }
-  }
-
   @override
   void dispose() {
-    dev.log('Disposing HLSVideoPlayer - videoId: ${widget.video.id}',
-      name: 'HLSVideoPlayer');
-    
     _isDisposed = true;
-    
-    cleanup().then((_) {
-      dev.log('Cleanup completed for videoId: ${widget.video.id}',
-        name: 'HLSVideoPlayer');
-    }).catchError((error) {
-      dev.log('Error during cleanup: $error',
-        name: 'HLSVideoPlayer',
-        error: error);
-    });
-    
+    _controller.dispose();
     super.dispose();
   }
 
-  Future<void> switchToVideo(Video newVideo, {VideoPlayerController? preloadedController}) async {
-    if (_isDisposed) return;
+  @override
+  void didUpdateWidget(HLSVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
     
-    dev.log('Switching to video: ${newVideo.id}', name: 'HLSVideoPlayer');
-    
-    final oldController = _controller;
-    
-    try {
-      await oldController.pause();
-      oldController.removeListener(_onVideoProgress);
-      
-      if (preloadedController != null) {
-        _controller = preloadedController;
-      } else {
-        _controller = VideoPlayerController.network(
-          newVideo.videoUrl,
-          videoPlayerOptions: VideoPlayerOptions(
-            mixWithOthers: false,
-            allowBackgroundPlayback: false,
-          ),
-        );
-        await _controller.initialize();
-      }
-
-      if (!mounted || _isDisposed) {
-        await _controller.dispose();
-        return;
-      }
-
-      setState(() {
-        _isInitialized = true;
-        _isError = false;
-        _aspectRatio = _controller.value.aspectRatio;
-      });
-
-      _startBufferCheck();
-      _controller.addListener(_onVideoProgress);
-
-      if (widget.autoplay && !_isDisposed) {
-        await _controller.play();
-        widget.onPlayingStateChanged?.call(true);
-      }
-
-      await oldController.dispose();
-
-    } catch (e, stackTrace) {
-      dev.log('Error switching video',
-        name: 'HLSVideoPlayer',
-        error: e,
-        stackTrace: stackTrace);
-      if (mounted && !_isDisposed) {
-        setState(() => _isError = true);
-        widget.onError?.call();
-      }
-      rethrow;
+    if (widget.video.id != oldWidget.video.id) {
+      // Video changed, reinitialize player
+      _controller.dispose();
+      _initializePlayer();
     }
   }
 
@@ -366,11 +223,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                 onPressed: () {
                   if (_controller.value.isPlaying) {
                     _controller.pause();
-                    widget.onPlayingStateChanged?.call(false);
                     setState(() => _showControls = true);
                   } else {
                     _controller.play();
-                    widget.onPlayingStateChanged?.call(true);
                     setState(() => _showControls = false);
                   }
                 },

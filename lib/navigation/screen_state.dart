@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import '../providers/video_feed_provider.dart';
 
 abstract class ScreenState {
