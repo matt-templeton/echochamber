@@ -169,7 +169,23 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (_controller.value.position >= _controller.value.duration) {
       dev.log('Video reached end', name: 'HLSVideoPlayer');
       widget.onVideoEnd?.call();
+      
+      // Reset video position to beginning
+      _controller.seekTo(Duration.zero);
+      _controller.pause();
+      
+      // Find the nearest PageView and trigger page change
+      final pageController = _findPageController(context);
+      if (pageController != null) {
+        dev.log('Controller before: $_controller', name: 'HLSVideoPlayer');
+        pageController.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+        dev.log('Controller after: $_controller', name: 'HLSVideoPlayer');
+      }
     }
+    
 
     final isBuffering = _controller.value.isBuffering;
     if (_isBuffering != isBuffering && !_isDisposed) {
@@ -178,6 +194,18 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
     if (mounted && !_isDisposed) {
       setState(() {});
+    }
+  }
+
+  PageController? _findPageController(BuildContext context) {
+    try {
+      final pageView = context.findAncestorWidgetOfExactType<PageView>();
+      if (pageView != null) {
+        return pageView.controller;
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
   }
 

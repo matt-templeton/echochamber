@@ -14,20 +14,20 @@ class VideoFeedProvider with ChangeNotifier {
   final VideoRepository _videoRepository;
   final FirebaseAuth _auth;
   final VideoBufferManager _bufferManager;
-  
-  List<Video> _videos = [];
-  int _currentIndex = 0;
+  Video? _currentVideo;
+  Video? _nextVideo;
+  Video? _previousVideo;
   bool _isLoading = false;
   bool _isControllerReady = false;
   bool _isEnabled = true;
   bool _isPaused = false;
   String? _error;
+  String _feedType = 'for_you'; // Default feed type
   bool _hasLiked = false;
   WatchSession? _currentSession;
   Timer? _positionUpdateTimer;
   String? _currentVideoId;
   Completer<void>? _initCompleter;
-  bool _hasMoreVideos = true;
 
   VideoFeedProvider({
     VideoFeedService? feedService,
@@ -36,22 +36,21 @@ class VideoFeedProvider with ChangeNotifier {
   }) : _feedService = feedService ?? VideoFeedService(),
        _videoRepository = videoRepository ?? VideoRepository(),
        _auth = auth ?? FirebaseAuth.instance,
-       _bufferManager = VideoBufferManager();
+       _bufferManager = VideoBufferManager() {
+    // Don't initialize videos automatically
+  }
 
-  // Getters
-  Video? get currentVideo => _videos.isNotEmpty ? _videos[_currentIndex] : null;
-  Video? get nextVideo => _hasNextVideo ? _videos[_currentIndex + 1] : null;
-  Video? get previousVideo => _hasPreviousVideo ? _videos[_currentIndex - 1] : null;
+  Video? get currentVideo => _currentVideo;
+  Video? get nextVideo => _nextVideo;
+  Video? get previousVideo => _previousVideo;
   bool get isLoading => _isLoading;
   bool get isControllerReady => _isControllerReady;
   String? get error => _error;
+  String get feedType => _feedType;
+  WatchSession? get currentSession => _currentSession;
+  bool get hasPreviousVideo => _previousVideo != null;
   bool get hasLiked => _hasLiked;
   bool get isPaused => _isPaused;
-  List<Video> get videos => List.unmodifiable(_videos);
-  int get currentIndex => _currentIndex;
-  int get videoCount => _videos.length;
-  bool get _hasNextVideo => _currentIndex < _videos.length - 1;
-  bool get _hasPreviousVideo => _currentIndex > 0;
 
   Future<void> waitForInitialization() async {
     if (_initCompleter != null) {
@@ -92,10 +91,11 @@ class VideoFeedProvider with ChangeNotifier {
     dev.log('Pausing video playback', name: 'VideoFeedProvider');
     
     // Save current position before pausing
-    if (currentVideo != null) {
-      final currentController = _bufferManager.getBufferedVideo(currentVideo!.id);
-      if (currentController != null && currentController.value.isInitialized) {
-        _bufferManager.savePosition(currentVideo!.id, currentController.value.position);
+    if (_currentVideo != null) {
+      final currentController = _bufferManager.getBufferedVideo(_currentVideo!.id);
+      dev.log('currentController: ${currentController}', name: 'VideoFeedProvider');
+      if (currentController  != null && currentController.value.isInitialized) {
+        _bufferManager.savePosition(_currentVideo!.id, currentController.value.position);
       }
     }
     
@@ -103,7 +103,7 @@ class VideoFeedProvider with ChangeNotifier {
     _bufferManager.pauseBuffering();
     
     // Pause current video controller if exists
-    final currentController = _bufferManager.getBufferedVideo(currentVideo?.id ?? '');
+    final currentController = _bufferManager.getBufferedVideo(_currentVideo?.id ?? '');
     if (currentController != null) {
       await currentController.pause();
     }
@@ -122,11 +122,11 @@ class VideoFeedProvider with ChangeNotifier {
     _bufferManager.resumeBuffering();
     
     // Resume current video if exists
-    if (currentVideo != null) {
-      final currentController = _bufferManager.getBufferedVideo(currentVideo!.id);
+    if (_currentVideo != null) {
+      final currentController = _bufferManager.getBufferedVideo(_currentVideo!.id);
       if (currentController != null) {
         // Restore position if available
-        final savedPosition = _bufferManager.getPosition(currentVideo!.id);
+        final savedPosition = _bufferManager.getPosition(_currentVideo!.id);
         if (savedPosition != null) {
           await currentController.seekTo(savedPosition);
         }
@@ -134,20 +134,20 @@ class VideoFeedProvider with ChangeNotifier {
         _setControllerReady(true);
       } else {
         // If controller was disposed, reinitialize
-        await _bufferManager.addToBuffer(currentVideo!);
+        await _bufferManager.addToBuffer(_currentVideo!);
       }
     }
     
     // Resume session if needed
-    if (currentVideo != null && _auth.currentUser != null) {
+    if (_currentVideo != null && _auth.currentUser != null) {
       await startWatchSession();
     }
   }
 
   Future<void> _initializeVideos() async {
     dev.log('Starting _initializeVideos', name: 'VideoFeedProvider');
-    dev.log('Current state - videos: ${_videos.length}, currentIndex: $_currentIndex', name: 'VideoFeedProvider');
     
+    // Create a new completer for initialization
     _initCompleter = Completer<void>();
     
     try {
@@ -155,121 +155,151 @@ class VideoFeedProvider with ChangeNotifier {
       _setControllerReady(false);
 
       // Load first video
-      final firstVideo = await _feedService.getNextVideo();
-      if (firstVideo != null) {
-        _videos = [firstVideo];
-        _currentIndex = 0;
-        dev.log('First video loaded - id: ${firstVideo.id}', name: 'VideoFeedProvider');
-        
+      dev.log('Loading first video', name: 'VideoFeedProvider');
+      _currentVideo = await _feedService.getNextVideo();
+      dev.log('Loaded first video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
+      
+      if (_currentVideo != null) {
         // Add current video to buffer
-        await _bufferManager.addToBuffer(firstVideo);
-        dev.log('First video added to buffer', name: 'VideoFeedProvider');
+        await _bufferManager.addToBuffer(_currentVideo!);
         
         // Pre-fetch next video
-        final nextVideo = await _feedService.getNextVideo();
-        if (nextVideo != null) {
-          _videos.add(nextVideo);
-          dev.log('Next video prefetched - id: ${nextVideo.id}', name: 'VideoFeedProvider');
-        }
-        
+        dev.log('Pre-fetching next video', name: 'VideoFeedProvider');
+        _nextVideo = await _feedService.getNextVideo();
+        dev.log('Pre-fetched next video: ${_nextVideo?.id}', name: 'VideoFeedProvider');
+        _previousVideo = null;
         _error = null;
+        
+        // Check like status for first video
         await _checkLikeStatus();
       } else {
         _error = 'No videos available';
+        dev.log('No videos available', name: 'VideoFeedProvider');
       }
     } catch (e, stackTrace) {
       dev.log('Error loading videos', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
       _error = 'Error loading videos: $e';
     } finally {
       _setLoading(false);
+      dev.log('Finished _initializeVideos', name: 'VideoFeedProvider');
       _initCompleter?.complete();
       _initCompleter = null;
-      notifyListeners();
-      dev.log('_initializeVideos completed - videos: ${_videos.length}, currentIndex: $_currentIndex', 
-        name: 'VideoFeedProvider');
     }
   }
 
-  Future<void> loadMoreVideos() async {
-    if (_isLoading || !_hasMoreVideos) {
-      dev.log('Skipping loadMoreVideos - isLoading: $_isLoading, hasMoreVideos: $_hasMoreVideos', 
-        name: 'VideoFeedProvider');
+  Future<void> loadNextVideo() async {
+    dev.log('Starting loadNextVideo', name: 'VideoFeedProvider');
+    
+    // Wait for initialization to complete if it's still ongoing
+    await waitForInitialization();
+    
+    if (_isLoading) {
+      dev.log('Already loading next video, waiting for completion', name: 'VideoFeedProvider');
       return;
     }
     
+    _setLoading(true);
+    _setControllerReady(false);
+    
     try {
-      _setLoading(true);
-      dev.log('Loading more videos - current count: ${_videos.length}', name: 'VideoFeedProvider');
+      dev.log('Starting to load next video', name: 'VideoFeedProvider');
       
-      final nextVideo = await _feedService.getNextVideo();
-      if (nextVideo != null) {
-        _videos.add(nextVideo);
-        dev.log('Added new video to list - id: ${nextVideo.id}, new count: ${_videos.length}', 
-          name: 'VideoFeedProvider');
-        notifyListeners();
-      } else {
-        _hasMoreVideos = false;
-        dev.log('No more videos available', name: 'VideoFeedProvider');
+      // Ensure current session is ended
+      if (_currentSession != null) {
+        await endCurrentSession(false);
       }
-    } catch (e) {
-      dev.log('Error loading more videos', name: 'VideoFeedProvider', error: e);
+
+      // Store current video as previous
+      if (_currentVideo != null) {
+        _previousVideo = _currentVideo;
+      }
+
+      // Move next video to current
+      if (_nextVideo != null) {
+        _currentVideo = _nextVideo;
+        _nextVideo = null;
+      } else {
+        _currentVideo = await _feedService.getNextVideo();
+      }
+      
+      // Pre-fetch next video
+      _nextVideo = await _feedService.getNextVideo();
+      
+      if (_currentVideo == null && _nextVideo == null) {
+        _error = 'No more videos available';
+      } else {
+        _error = null;
+        await _checkLikeStatus();
+      }
+      
+      dev.log('Successfully loaded next video', name: 'VideoFeedProvider');
+    } catch (e, stackTrace) {
+      dev.log('Error loading next video', name: 'VideoFeedProvider', error: e, stackTrace: stackTrace);
+      _error = 'Error loading next video: $e';
     } finally {
       _setLoading(false);
     }
   }
 
-  Future<bool> switchToVideo(int index) async {
-    dev.log('Attempting to switch to video index: $index (current: $_currentIndex)', 
-      name: 'VideoFeedProvider');
-    
-    if (index < 0 || index >= _videos.length) {
-      dev.log('Invalid video index: $index, videos length: ${_videos.length}', 
-        name: 'VideoFeedProvider');
-      return false;
+  Future<void> loadPreviousVideo() async {
+    if (_isLoading || _previousVideo == null) {
+      return;
     }
     
+    _setLoading(true);
+    _setControllerReady(false);
     try {
-      // End current session if exists
-      if (_currentSession != null) {
-        dev.log('Ending current session before switch', name: 'VideoFeedProvider');
-        await endCurrentSession(false);
+      // Store current video as next
+      if (_currentVideo != null) {
+        _nextVideo = _currentVideo;
       }
 
-      _currentIndex = index;
-      final targetVideo = _videos[index];
-      dev.log('Switching to video - id: ${targetVideo.id}, index: $index', 
-        name: 'VideoFeedProvider');
-
-      // Add to buffer if not already buffered
-      if (!_bufferManager.hasBufferedVideo(targetVideo.id)) {
-        dev.log('Adding video to buffer - id: ${targetVideo.id}', name: 'VideoFeedProvider');
-        await _bufferManager.addToBuffer(targetVideo);
-      } else {
-        dev.log('Video already in buffer - id: ${targetVideo.id}', name: 'VideoFeedProvider');
-      }
-
-      // Check if we need to load more videos
-      if (index >= _videos.length - 2 && _hasMoreVideos) {
-        dev.log('Near end of list, loading more videos', name: 'VideoFeedProvider');
-        await loadMoreVideos();
-      }
-
+      // Move previous video to current
+      _currentVideo = _previousVideo;
+      _previousVideo = null;
+      
+      _error = null;
       await _checkLikeStatus();
-      notifyListeners();
-      dev.log('Successfully switched to video index: $index', name: 'VideoFeedProvider');
-      return true;
     } catch (e) {
-      dev.log('Error switching video', name: 'VideoFeedProvider', error: e);
-      return false;
+      _error = 'Error loading previous video: $e';
+    } finally {
+      _setLoading(false);
     }
   }
 
+  Future<void> loadSpecificVideo(String videoId) async {
+    if (_isLoading) {
+      return;
+    }
+    
+    _setLoading(true);
+    _setControllerReady(false);
+    try {
+      // Load the specific video
+      _currentVideo = await _videoRepository.getVideoById(videoId);
+      
+      // Pre-fetch next video
+      _nextVideo = await _feedService.getNextVideo();
+      
+      if (_currentVideo == null) {
+        _error = 'Video not found';
+      } else {
+        _error = null;
+        await _checkLikeStatus();
+      }
+    } catch (e) {
+      _error = 'Error loading video: $e';
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+
   void resetFeed() {
     _feedService.resetFeed();
-    _videos.clear();
-    _currentIndex = 0;
+    _currentVideo = null;
+    _nextVideo = null;
     _error = null;
-    _hasMoreVideos = true;
     _setControllerReady(false);
     _initializeVideos();
   }
@@ -287,12 +317,13 @@ class VideoFeedProvider with ChangeNotifier {
     }
   }
 
+
   Future<void> startWatchSession() async {
-    if (currentVideo == null || _currentSession != null) return;
+    if (_currentVideo == null || _currentSession != null) return;
 
     try {
       _currentSession = await _videoRepository.startWatchSession(
-        currentVideo!.id,
+        _currentVideo!.id,
         _auth.currentUser!.uid,
       );
       notifyListeners();
@@ -302,12 +333,12 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   Future<void> endCurrentSession(bool completed) async {
-    if (_currentSession == null || currentVideo == null) return;
+    if (_currentSession == null || _currentVideo == null) return;
 
     try {
       await _videoRepository.endWatchSession(
         _currentSession!.id,
-        currentVideo!.id,
+        _currentVideo!.id,
       );
       _currentSession = null;
       notifyListeners();
@@ -347,6 +378,40 @@ class VideoFeedProvider with ChangeNotifier {
     }
   }
 
+  // Future<void> updateWatchPosition(Duration position) async {
+  //   if (_currentSession == null || _currentVideoId == null) return;
+
+  //   final user = _auth.currentUser;
+  //   if (user == null) return;
+
+  //   try {
+  //     await _videoRepository.updateWatchHistoryEntry(
+  //       _currentSession!.id,
+  //       watchDuration: position.inSeconds,
+  //       completed: false,
+  //     );
+  //   } catch (e) {
+  //     if (e.toString().contains('not-found')) {
+  //       // If the watch history entry doesn't exist, create a new one
+  //       try {
+  //         await _videoRepository.addToWatchHistory(_currentVideoId!, user.uid);
+  //         // Retry the update after creating the entry
+  //         await _videoRepository.updateWatchHistoryEntry(
+  //           _currentSession!.id,
+  //           watchDuration: position.inSeconds,
+  //           completed: false,
+  //         );
+  //       } catch (retryError) {
+  //         // Log error but don't crash the app
+  //         debugPrint('Error creating/updating watch history: $retryError');
+  //       }
+  //     } else {
+  //       // Log other errors but don't crash the app
+  //       debugPrint('Error updating watch position: $e');
+  //     }
+  //   }
+  // }
+
   Stream<QuerySnapshot> getWatchHistory({
     int limit = 20,
     DocumentSnapshot? startAfter,
@@ -377,14 +442,14 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   Future<void> _checkLikeStatus() async {
-    if (currentVideo == null || _auth.currentUser == null) {
+    if (_currentVideo == null || _auth.currentUser == null) {
       _hasLiked = false;
       return;
     }
     
     try {
       _hasLiked = await _videoRepository.hasUserLikedVideo(
-        currentVideo!.id,
+        _currentVideo!.id,
         _auth.currentUser!.uid,
       );
       notifyListeners();
@@ -395,20 +460,20 @@ class VideoFeedProvider with ChangeNotifier {
   }
 
   Future<void> toggleLike() async {
-    if (currentVideo == null || _auth.currentUser == null) return;
+    if (_currentVideo == null || _auth.currentUser == null) return;
 
     try {
       if (_hasLiked) {
-        await _videoRepository.unlikeVideo(currentVideo!.id, _auth.currentUser!.uid);
+        await _videoRepository.unlikeVideo(_currentVideo!.id, _auth.currentUser!.uid);
         _hasLiked = false;
-        _videos[_currentIndex] = currentVideo!.copyWith(
-          likesCount: currentVideo!.likesCount - 1
+        _currentVideo = _currentVideo!.copyWith(
+          likesCount: _currentVideo!.likesCount - 1
         );
       } else {
-        await _videoRepository.likeVideo(currentVideo!.id, _auth.currentUser!.uid);
+        await _videoRepository.likeVideo(_currentVideo!.id, _auth.currentUser!.uid);
         _hasLiked = true;
-        _videos[_currentIndex] = currentVideo!.copyWith(
-          likesCount: currentVideo!.likesCount + 1
+        _currentVideo = _currentVideo!.copyWith(
+          likesCount: _currentVideo!.likesCount + 1
         );
       }
       notifyListeners();
