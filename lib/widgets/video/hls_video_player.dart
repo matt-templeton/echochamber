@@ -66,7 +66,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _isDragging = false;
   bool _wasPlayingBeforeDrag = false;
   bool _isDisposed = false;
-  bool _hasUserInteracted = false;
   double _aspectRatio = 16 / 9;
   Timer? _hideControlsTimer;
 
@@ -95,9 +94,10 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
       _controller = controller;
 
-      // Set initial volume based on whether user has interacted
+      // Set initial volume based on previous user interaction
       if (kIsWeb) {
-        await controller.setVolume(_hasUserInteracted ? 1.0 : 0.0);
+        final videoFeedProvider = context.read<VideoFeedProvider>();
+        await controller.setVolume(videoFeedProvider.hasUserInteractedWithAudio ? 1.0 : 0.0);
       }
 
       await controller.initialize();
@@ -112,7 +112,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
       if (widget.autoplay) {
         controller.play();
-        // Start hide timer after play starts
         _startHideControlsTimer();
       }
 
@@ -184,9 +183,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   void _enableAudioIfNeeded() {
-    if (kIsWeb && !_hasUserInteracted && widget.enableAudioOnInteraction) {
-      _hasUserInteracted = true;
-      _controller?.setVolume(1.0);
+    if (kIsWeb && widget.enableAudioOnInteraction) {
+      final videoFeedProvider = context.read<VideoFeedProvider>();
+      if (!videoFeedProvider.hasUserInteractedWithAudio) {
+        videoFeedProvider.markUserInteractedWithAudio();
+        _controller?.setVolume(1.0);
+      }
     }
   }
 
@@ -319,9 +321,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                   color: Colors.white,
                 ),
                 onPressed: () {
-                  if (kIsWeb && !_hasUserInteracted) {
-                    _hasUserInteracted = true;
-                    controller.setVolume(1.0);
+                  if (kIsWeb) {
+                    final videoFeedProvider = context.read<VideoFeedProvider>();
+                    if (!videoFeedProvider.hasUserInteractedWithAudio) {
+                      videoFeedProvider.markUserInteractedWithAudio();
+                      controller.setVolume(1.0);
+                    }
                   }
                   
                   if (controller.value.isPlaying) {
@@ -352,7 +357,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                     size: 30,
                   ),
                   onPressed: () {
-                    _hasUserInteracted = true;
+                    final videoFeedProvider = context.read<VideoFeedProvider>();
+                    videoFeedProvider.markUserInteractedWithAudio();
                     if (controller.value.volume > 0) {
                       controller.setVolume(0);
                     } else {

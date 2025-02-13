@@ -18,6 +18,7 @@ class VideoFeedProvider with ChangeNotifier {
   int _currentIndex = 0;
   bool _isLoading = false;
   bool _isEnabled = true;
+  bool _hasUserInteractedWithAudio = false;
   
   String? _error;
   // String _feedType = 'for_you'; // Default feed type
@@ -41,6 +42,7 @@ class VideoFeedProvider with ChangeNotifier {
   // WatchSession? get currentSession => _currentSession;
   bool get hasLiked => _hasLiked;
   bool get isPaused => _isPaused;
+  bool get hasUserInteractedWithAudio => _hasUserInteractedWithAudio;
 
   void setEnabled(bool enabled) {
     if (_isEnabled == enabled) return;
@@ -129,6 +131,11 @@ class VideoFeedProvider with ChangeNotifier {
     }
     notifyListeners();
 
+  }
+
+  void markUserInteractedWithAudio() {
+    _hasUserInteractedWithAudio = true;
+    notifyListeners();
   }
 
   @override
