@@ -27,8 +27,10 @@ class _HomeScreenState extends State<HomeScreen> {
   late final VideoFeedProvider _videoFeedProvider;
   late final NavigationStateManager _navigationManager;
   late final HomeScreenState _screenState;
+  late final PageController _pageController;
   bool _isInitialized = false;
   bool _isInfoExpanded = true;  // Track expansion state
+  bool _isAnimating = false;
 
   @override
   void didChangeDependencies() {
@@ -37,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _videoFeedProvider = context.read<VideoFeedProvider>();
       _navigationManager = NavigationStateManager();
       _screenState = HomeScreenState(_videoFeedProvider);
+      _pageController = PageController();
       _navigationManager.navigateToScreen(_screenState);
       _isInitialized = true;
     }
@@ -54,8 +57,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     _screenState.onExit();
     super.dispose();
+  }
+
+  Future<void> _animateToNextVideo() async {
+    if (_isAnimating) return;
+    _isAnimating = true;
+    
+    try {
+      await _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } finally {
+      _isAnimating = false;
+    }
   }
 
   Widget _buildVideoInfo(Video video, bool isAuthenticated, VideoFeedProvider videoFeed) {
@@ -205,12 +223,23 @@ class _HomeScreenState extends State<HomeScreen> {
           fit: StackFit.expand,
           children: [
             if (currentVideo != null)
-              SizedBox.expand(
-                child: HLSVideoPlayer(
-                  video: currentVideo,
-                  autoplay: true,
-                  enableAudioOnInteraction: true,
-                ),
+              PageView.builder(
+                scrollDirection: Axis.vertical,
+                controller: _pageController,
+                onPageChanged: (index) {
+                  videoFeed.moveToNextVideo();
+                },
+                itemBuilder: (context, index) {
+                  return SizedBox.expand(
+                    child: HLSVideoPlayer(
+                      key: ValueKey(currentVideo.id),
+                      video: currentVideo,
+                      autoplay: true,
+                      enableAudioOnInteraction: true,
+                      onVideoEnd: _animateToNextVideo,
+                    ),
+                  );
+                },
               ),
 
             // UI Overlay (Top)

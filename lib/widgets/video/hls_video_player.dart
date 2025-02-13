@@ -157,8 +157,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       controller.seekTo(Duration.zero);
       controller.pause();
       
-      // Move to next video
-      context.read<VideoFeedProvider>().moveToNextVideo();
+      // Call onVideoEnd callback if provided
+      widget.onVideoEnd?.call();
     }
 
     final isBuffering = controller.value.isBuffering;
