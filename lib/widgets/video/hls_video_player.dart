@@ -196,12 +196,23 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   void pauseVideo() {
-    _controller?.pause();
+    if (_isDisposed || !mounted) return;
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    
+    _wasPlayingBeforeDrag = controller.value.isPlaying;
+    if (_wasPlayingBeforeDrag) {
+      controller.pause();
+    }
   }
 
   void resumeVideo() {
-    if (!_isDisposed && mounted) {
-      _controller?.play();
+    if (_isDisposed || !mounted) return;
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    
+    if (_wasPlayingBeforeDrag) {
+      controller.play();
     }
   }
 

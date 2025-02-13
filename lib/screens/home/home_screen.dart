@@ -88,60 +88,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _currentPlayerState?.pauseVideo();
   }
 
-  void _onDragEnd(DragEndDetails details, BuildContext context) {
-    if (!_isDragging) return;
-    _isDragging = false;
-
-    final velocity = details.primaryVelocity ?? 0;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final dragDistance = _pageController.offset - (_pageController.page ?? 0) * screenWidth;
-    final dragPercentage = dragDistance.abs() / screenWidth;
-
-    // Resume video if not transitioning
-    if (dragPercentage < _kSwipeThreshold && velocity.abs() < 300) {
-      _currentPlayerState?.resumeVideo();
-      _pageController.animateToPage(
-        _pageController.page!.round(),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-      return;
-    }
-
-    // Determine swipe direction
-    if ((dragDistance > 0 && dragPercentage > _kSwipeThreshold) || velocity > 300) {
-      // Swipe right - go to previous video if possible
-      if (_videoFeedProvider.canGoBack) {
-        _pageController.previousPage(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      } else {
-        // Bounce back if at start
-        _currentPlayerState?.resumeVideo();
-        _pageController.animateToPage(
-          _pageController.page!.round(),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    } else if ((dragDistance < 0 && dragPercentage > _kSwipeThreshold) || velocity < -300) {
-      // Swipe left - go to next video
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    } else {
-      // Not enough drag, bounce back
-      _currentPlayerState?.resumeVideo();
-      _pageController.animateToPage(
-        _pageController.page!.round(),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
   void _onDragUpdate(DragUpdateDetails details) {
     if (!_isDragging) return;
     
@@ -156,7 +102,68 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     
+    // Use animateTo instead of jumpTo for smoother dragging
     _pageController.jumpTo(_pageController.offset - dragDistance);
+  }
+
+  void _onDragEnd(DragEndDetails details, BuildContext context) {
+    if (!_isDragging) return;
+
+    final velocity = details.primaryVelocity ?? 0;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dragDistance = _pageController.offset - (_pageController.page ?? 0) * screenWidth;
+    final dragPercentage = dragDistance.abs() / screenWidth;
+
+    // If drag was too small or velocity too low, snap back
+    if (dragPercentage < _kSwipeThreshold && velocity.abs() < 300) {
+      _pageController.animateToPage(
+        _pageController.page!.round(),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      ).then((_) {
+        // Only reset drag state and resume video after animation completes
+        _isDragging = false;
+        _currentPlayerState?.resumeVideo();
+      });
+      return;
+    }
+
+    // Handle swipe completion
+    if ((dragDistance > 0 && dragPercentage > _kSwipeThreshold) || velocity > 300) {
+      // Swipe right - go to previous video if possible
+      if (_videoFeedProvider.canGoBack) {
+        _pageController.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        ).then((_) => _isDragging = false);
+      } else {
+        // Bounce back if at start
+        _pageController.animateToPage(
+          _pageController.page!.round(),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        ).then((_) {
+          _isDragging = false;
+          _currentPlayerState?.resumeVideo();
+        });
+      }
+    } else if ((dragDistance < 0 && dragPercentage > _kSwipeThreshold) || velocity < -300) {
+      // Swipe left - go to next video
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      ).then((_) => _isDragging = false);
+    } else {
+      // Not enough drag, bounce back
+      _pageController.animateToPage(
+        _pageController.page!.round(),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      ).then((_) {
+        _isDragging = false;
+        _currentPlayerState?.resumeVideo();
+      });
+    }
   }
 
   Widget _buildVideoInfo(Video video, bool isAuthenticated, VideoFeedProvider videoFeed) {
@@ -315,10 +322,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: _pageController,
                   physics: const NeverScrollableScrollPhysics(), // Disable default scrolling
                   onPageChanged: (index) {
-                    if (index > (_pageController.page ?? 0)) {
+                    final currentPage = _pageController.page ?? 0;
+                    if (index > currentPage) {
                       videoFeed.moveToNextVideo();
-                    } else {
+                    } else if (videoFeed.canGoBack) {
                       videoFeed.moveToPreviousVideo();
+                    } else {
+                      // If we can't go back, force the page back to current
+                      _pageController.jumpToPage(currentPage.round());
                     }
                   },
                   itemBuilder: (context, index) {
