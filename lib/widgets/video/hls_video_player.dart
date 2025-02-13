@@ -71,6 +71,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   double _aspectRatio = 16 / 9;
   Timer? _hideControlsTimer;
 
+  // Add getter for controller
+  VideoPlayerController? get controller => _controller;
+
   @override
   void initState() {
     super.initState();

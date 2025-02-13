@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isInfoExpanded = true;  // Track expansion state
   bool _isAnimating = false;
   bool _isDragging = false;
+  bool _wasPlayingBeforeSearch = false;
   HLSVideoPlayerState? _currentPlayerState;
 
   static const double _kSwipeThreshold = 0.3; // 30% of screen width
@@ -365,11 +366,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.transparent,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(50),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const SearchScreen(),
-                              ),
-                            ),
+                            onTap: () async {
+                              final playerState = _currentPlayerState;
+                              if (playerState == null) return;
+                              
+                              // Store whether video was playing
+                              _wasPlayingBeforeSearch = playerState.controller?.value.isPlaying ?? false;
+                              playerState.pauseVideo();
+                              
+                              // Wait for navigation to complete
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const SearchScreen(),
+                                ),
+                              );
+                              
+                              // Resume only if it was playing before
+                              if (_wasPlayingBeforeSearch) {
+                                playerState.resumeVideo();
+                              }
+                            },
                             hoverColor: Colors.white.withOpacity(0.2),
                             child: Padding(
                               padding: const EdgeInsets.all(8.0),
