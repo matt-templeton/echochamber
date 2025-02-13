@@ -67,8 +67,8 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
     switch (code) {
       case 'user-not-found':
         return 'No user found with this email address.';
-      case 'wrong-password':
-        return 'Incorrect password. Please try again.';
+      case 'invalid-credential':
+        return 'Invalid credentials. Please try again.';
       case 'invalid-email':
         return 'Please enter a valid email address.';
       case 'user-disabled':
