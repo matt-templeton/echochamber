@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/video_model.dart';
+import 'dart:developer' as dev;
 
 class VideoRepository {
   final FirebaseFirestore _firestore;
@@ -9,7 +10,14 @@ class VideoRepository {
   static const int _maxHistoryEntries = 100;
 
   VideoRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+      : _firestore = firestore ?? FirebaseFirestore.instance {
+    // Ensure titleLower field exists
+    // ensureTitleLowerField().then((_) {
+    //   dev.log('Finished checking/running migration', name: 'VideoRepository');
+    // }).catchError((error) {
+    //   dev.log('Error during migration check/run', name: 'VideoRepository', error: error);
+    // });
+  }
 
   // Create a new video document
   Future<void> createVideo(Video video) async {
@@ -581,6 +589,23 @@ class VideoRepository {
     return tags.toList()..sort();
   }
 
+  // Check if migration is needed and run it if necessary
+  // Future<void> ensureTitleLowerField() async {
+  //   try {
+  //     final snapshot = await _firestore.collection(_collection).limit(1).get();
+  //     if (snapshot.docs.isEmpty) {
+  //       dev.log('No documents found to migrate', name: 'VideoRepository');
+  //       return;
+  //     }
+      
+  //     // final sampleDoc = snapshot.docs.first.data();
+      
+  //   } catch (e) {
+  //     dev.log('Error checking migration status', name: 'VideoRepository', error: e);
+  //     rethrow;
+  //   }
+  // }
+
   // Search videos with filters
   Future<List<Video>> searchVideos({
     String? searchQuery,
@@ -590,54 +615,66 @@ class VideoRepository {
     DocumentSnapshot? startAfter,
   }) async {
     Query query = _firestore.collection(_collection);
+    dev.log('Starting search with query: "$searchQuery"', name: 'VideoRepository');
 
     // Apply genre filter if specified
     if (genres != null && genres.isNotEmpty) {
-      // Use the first genre for the query (Firestore limitation)
+      dev.log('Applying genre filter: ${genres.first}', name: 'VideoRepository');
       query = query.where('genres', arrayContains: genres.first);
     }
 
     // Apply tag filter if specified
     if (tags != null && tags.isNotEmpty) {
-      // Use the first tag for the query (Firestore limitation)
+      dev.log('Applying tag filter: ${tags.first}', name: 'VideoRepository');
       query = query.where('tags', arrayContains: tags.first);
     }
 
     // Apply search query if specified
     if (searchQuery != null && searchQuery.isNotEmpty) {
-      query = query.where('title', isGreaterThanOrEqualTo: searchQuery)
-                  .where('title', isLessThan: '${searchQuery}z');
+      final searchLower = searchQuery.toLowerCase();
+      final end = searchLower.substring(0, searchLower.length - 1) +
+                 String.fromCharCode(searchLower.codeUnitAt(searchLower.length - 1) + 1);
+      dev.log('Searching titleLower field: >="$searchLower" AND <"$end"', name: 'VideoRepository');
+      query = query.where('titleLower', isGreaterThanOrEqualTo: searchLower)
+                  .where('titleLower', isLessThan: end);
     }
-
-    // Apply pagination
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
-    }
-
-    // Apply limit and order
-    query = query.orderBy('uploadedAt', descending: true).limit(limit);
 
     // Execute query
     final snapshot = await query.get();
+    dev.log('Query returned ${snapshot.docs.length} results', name: 'VideoRepository');
     
     // Filter results client-side for additional genres/tags
-    return snapshot.docs.map((doc) => Video.fromFirestore(doc))
-        .where((video) {
-          // Check if video matches all selected genres
-          if (genres != null && genres.isNotEmpty) {
-            if (!genres.every((g) => video.genres.contains(g))) {
-              return false;
-            }
-          }
-          // Check if video matches all selected tags
-          if (tags != null && tags.isNotEmpty) {
-            if (!tags.every((t) => video.tags.contains(t))) {
-              return false;
-            }
-          }
-          return true;
-        })
-        .toList();
+    var results = snapshot.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      dev.log('Document ${doc.id} - title: "${data['title']}", titleLower: "${data['titleLower']}"', 
+        name: 'VideoRepository');
+      return Video.fromFirestore(doc);
+    }).where((video) {
+      // Check if video matches all selected genres
+      if (genres != null && genres.isNotEmpty) {
+        if (!genres.every((g) => video.genres.contains(g))) {
+          return false;
+        }
+      }
+      // Check if video matches all selected tags
+      if (tags != null && tags.isNotEmpty) {
+        if (!tags.every((t) => video.tags.contains(t))) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+
+    // Sort by uploadedAt client-side instead of in query
+    results.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+    
+    // Apply limit after sorting
+    if (results.length > limit) {
+      results = results.sublist(0, limit);
+    }
+    
+    dev.log('Returning ${results.length} filtered results', name: 'VideoRepository');
+    return results;
   }
 
   // Get a video document by ID
@@ -655,4 +692,49 @@ class VideoRepository {
       .orderBy('uploadedAt', descending: true)
       .get();
   }
+
+  // Migration function to add titleLower field to existing videos
+  // Future<void> migrateTitleLowerField() async {
+  //   final batch = _firestore.batch();
+  //   int operationCount = 0;
+    
+  //   try {
+  //     final snapshot = await _firestore.collection(_collection).get();
+  //     dev.log('Starting migration with ${snapshot.docs.length} documents', name: 'VideoRepository');
+      
+  //     for (final doc in snapshot.docs) {
+  //       final data = doc.data();
+  //       dev.log('Checking document ${doc.id} - title: "${data['title']}", current titleLower: "${data['titleLower']}"', 
+  //         name: 'VideoRepository');
+        
+  //       if (!data.containsKey('titleLower')) {
+  //         final newTitleLower = (data['title'] as String).toLowerCase();
+  //         dev.log('Adding titleLower: "$newTitleLower" to document ${doc.id}', name: 'VideoRepository');
+          
+  //         batch.update(doc.reference, {
+  //           'titleLower': newTitleLower,
+  //         });
+  //         operationCount++;
+          
+  //         // Commit batch when it reaches the limit
+  //         if (operationCount >= 500) {
+  //           await batch.commit();
+  //           dev.log('Committed batch of $operationCount updates', name: 'VideoRepository');
+  //           operationCount = 0;
+  //         }
+  //       }
+  //     }
+      
+  //     // Commit any remaining operations
+  //     if (operationCount > 0) {
+  //       await batch.commit();
+  //       dev.log('Committed final batch of $operationCount updates', name: 'VideoRepository');
+  //     }
+      
+  //     dev.log('Migration completed successfully', name: 'VideoRepository');
+  //   } catch (e) {
+  //     dev.log('Error migrating titleLower field', name: 'VideoRepository', error: e);
+  //     rethrow;
+  //   }
+  // }
 } 

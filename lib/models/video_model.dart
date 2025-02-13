@@ -138,6 +138,7 @@ class Video {
   final String id;
   final String userId;
   final String title;
+  final String titleLower;
   final String description;
   final int duration;
   final String videoUrl;  // This will be the master playlist URL for HLS
@@ -171,6 +172,7 @@ class Video {
     required this.id,
     required this.userId,
     required this.title,
+    String? titleLower,
     required this.description,
     required this.duration,
     required this.videoUrl,
@@ -199,7 +201,7 @@ class Video {
     this.watchCount = 0,
     this.lastWatchedAt,
     this.totalWatchDuration = 0,
-  });
+  }) : titleLower = titleLower ?? title.toLowerCase();
 
   // Create a Video from a Firestore document
   factory Video.fromFirestore(DocumentSnapshot doc) {
@@ -229,6 +231,7 @@ class Video {
       id: doc.id,
       userId: data['userId'],
       title: data['title'],
+      titleLower: data['titleLower'] ?? data['title'].toLowerCase(),
       description: description,
       duration: data['duration'],
       videoUrl: data['videoUrl'],
@@ -285,6 +288,7 @@ class Video {
     return {
       'userId': userId,
       'title': title,
+      'titleLower': titleLower,
       'description': description,
       'duration': duration,
       'videoUrl': videoUrl,
@@ -356,6 +360,7 @@ class Video {
       id: id ?? this.id,
       userId: userId ?? this.userId,
       title: title ?? this.title,
+      titleLower: this.titleLower,
       description: description ?? this.description,
       duration: duration ?? this.duration,
       videoUrl: videoUrl ?? this.videoUrl,
