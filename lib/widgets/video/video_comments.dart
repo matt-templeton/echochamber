@@ -22,7 +22,6 @@ class VideoComments extends StatefulWidget {
 }
 
 class _VideoCommentsState extends State<VideoComments> {
-  bool _isTopSelected = true;
   final TextEditingController _commentController = TextEditingController();
   bool _isSubmitting = false;
   Comment? _selectedComment;  // Track which comment we're viewing replies for
@@ -154,28 +153,6 @@ class _VideoCommentsState extends State<VideoComments> {
                         ),
                       ),
                     ),
-                    // Filter tabs - fixed height
-                    SizedBox(
-                      height: 44,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Row(
-                          children: [
-                            _FilterChip(
-                              label: 'Top',
-                              isSelected: _isTopSelected,
-                              onTap: () => setState(() => _isTopSelected = true),
-                            ),
-                            const SizedBox(width: 8),
-                            _FilterChip(
-                              label: 'Newest',
-                              isSelected: !_isTopSelected,
-                              onTap: () => setState(() => _isTopSelected = false),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                     // Comments list - takes remaining space
                     Expanded(
                       child: RawScrollbar(
@@ -230,12 +207,8 @@ class _VideoCommentsState extends State<VideoComments> {
                               );
                             }
 
-                            // Sort comments based on selected filter
-                            if (_isTopSelected) {
-                              comments.sort((a, b) => b.likesCount.compareTo(a.likesCount));
-                            } else {
-                              comments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                            }
+                            // Sort comments by most recent first
+                            comments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
                             return ListView.separated(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -489,39 +462,6 @@ class _VideoCommentsState extends State<VideoComments> {
     } else {
       return 'just now';
     }
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _FilterChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.grey[800],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.black : Colors.white,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
   }
 }
 
