@@ -42,6 +42,7 @@ class HLSVideoPlayer extends StatefulWidget {
   final bool autoplay;
   final bool showControls;
   final VoidCallback? onVideoEnd;
+  final bool enableAudioOnInteraction;
 
   const HLSVideoPlayer({
     Key? key,
@@ -49,6 +50,7 @@ class HLSVideoPlayer extends StatefulWidget {
     this.autoplay = true,
     this.showControls = true,
     this.onVideoEnd,
+    this.enableAudioOnInteraction = false,
   }) : super(key: key);
 
   @override
@@ -186,6 +188,13 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     });
   }
 
+  void _enableAudioIfNeeded() {
+    if (kIsWeb && !_hasUserInteracted && widget.enableAudioOnInteraction) {
+      _hasUserInteracted = true;
+      _controller?.setVolume(1.0);
+    }
+  }
+
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
@@ -220,13 +229,18 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     return SizedBox.expand(
       child: MouseRegion(
         onHover: (_) {
+          // Only show controls on hover, don't try to enable audio
           if (!_showControls && mounted && _isInitialized) {
             setState(() => _showControls = true);
             _startHideControlsTimer();
           }
         },
         child: GestureDetector(
-          onTap: _handleTap,
+          // Only try to enable audio on explicit interactions
+          onTap: () {
+            _enableAudioIfNeeded();
+            _handleTap();
+          },
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -372,11 +386,14 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
           return const SizedBox.shrink();
         }
 
-        return Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          color: Colors.black38,
+        final duration = _controller!.value.duration;
+        final position = _controller!.value.position;
+        final progress = position.inMilliseconds / duration.inMilliseconds;
+
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onHorizontalDragStart: (DragStartDetails details) {
               if (!mounted || !_isInitialized) return;
               setState(() {
@@ -386,25 +403,13 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
               if (_wasPlayingBeforeDrag) {
                 _controller!.pause();
               }
+              
+              // Handle the initial position
+              _handleSeek(details.localPosition.dx, constraints.maxWidth);
             },
             onHorizontalDragUpdate: (DragUpdateDetails details) {
               if (!_isDragging || !mounted || !_isInitialized) return;
-              
-              final box = context.findRenderObject() as RenderBox?;
-              if (box == null || !box.hasSize) return;
-              
-              final double width = box.size.width;
-              final double localX = details.localPosition.dx;
-              final double progress = localX / width;
-              
-              // Ensure progress is between 0 and 1
-              final double clampedProgress = progress.clamp(0.0, 1.0);
-              
-              // Calculate the target position
-              final Duration targetPosition = _controller!.value.duration * clampedProgress;
-              
-              // Seek to the target position
-              _controller!.seekTo(targetPosition);
+              _handleSeek(details.localPosition.dx, constraints.maxWidth);
             },
             onHorizontalDragEnd: (DragEndDetails details) {
               if (!mounted || !_isInitialized) return;
@@ -415,79 +420,88 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                 _isDragging = false;
               });
             },
-            onTapDown: (TapDownDetails details) {
+            onTapUp: (TapUpDetails details) {
               if (!mounted || !_isInitialized) return;
-              
-              final box = context.findRenderObject() as RenderBox?;
-              if (box == null || !box.hasSize) return;
-              
-              final double width = box.size.width;
-              final double localX = details.localPosition.dx;
-              final double progress = localX / width;
-              
-              // Ensure progress is between 0 and 1
-              final double clampedProgress = progress.clamp(0.0, 1.0);
-              
-              // Calculate the target position
-              final Duration targetPosition = _controller!.value.duration * clampedProgress;
-              
-              // Seek to the target position
-              _controller!.seekTo(targetPosition);
+              _handleSeek(details.localPosition.dx, constraints.maxWidth);
             },
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                if (!mounted || !_isInitialized || constraints.maxWidth == 0) {
-                  return const SizedBox.shrink();
-                }
-
-                final duration = _controller!.value.duration;
-                final position = _controller!.value.position;
-                final progress = position.inMilliseconds / duration.inMilliseconds;
-
-                return Stack(
-                  children: [
-                    // Background
-                    Container(
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      color: Colors.white24,
-                    ),
-                    // Progress
-                    Container(
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      width: constraints.maxWidth * progress,
-                      color: Colors.white,
-                    ),
-                    // Progress indicator ball
-                    if (constraints.maxWidth > 0)
-                      Positioned(
-                        left: (constraints.maxWidth * progress - 8).clamp(0, constraints.maxWidth - 16),
-                        top: 2,
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.5),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
+            child: Stack(
+              children: [
+                // Clickable area - full height transparent container
+                Container(
+                  height: 40,
+                  color: Colors.transparent,
+                ),
+                // Progress bar group - centered in the clickable area
+                Positioned.fill(
+                  child: Center(
+                    child: SizedBox(
+                      height: 20,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Background track
+                          Center(
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(2),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          // Progress track
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: 4,
+                              width: constraints.maxWidth * progress,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                          // Progress indicator ball
+                          Positioned(
+                            left: (constraints.maxWidth * progress - 8).clamp(0, constraints.maxWidth - 16),
+                            top: 2,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.grab,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                  ],
-                );
-              },
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
       },
     );
+  }
+
+  void _handleSeek(double dx, double maxWidth) {
+    final progress = (dx / maxWidth).clamp(0.0, 1.0);
+    final duration = _controller!.value.duration;
+    final targetPosition = duration * progress;
+    _controller!.seekTo(targetPosition);
   }
 }
 

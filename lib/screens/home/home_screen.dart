@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../widgets/video/hls_video_player.dart';
 import '../../widgets/primary_nav_bar.dart';
+import '../../models/video_model.dart';
 // import '../../repositories/video_repository.dart';
 import '../profile/profile_screen.dart';
 import '../search/search_screen.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final NavigationStateManager _navigationManager;
   late final HomeScreenState _screenState;
   bool _isInitialized = false;
+  bool _isInfoExpanded = true;  // Track expansion state
 
   @override
   void didChangeDependencies() {
@@ -56,6 +58,138 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Widget _buildVideoInfo(Video video, bool isAuthenticated, VideoFeedProvider videoFeed) {
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 56 + MediaQuery.of(context).padding.bottom,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // Info section with animation
+          Expanded(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Info icon that's always visible
+                Positioned(
+                  left: 0,
+                  bottom: 0,
+                  child: GestureDetector(
+                    onTap: () => setState(() => _isInfoExpanded = !_isInfoExpanded),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: AnimatedRotation(
+                        duration: const Duration(milliseconds: 200),
+                        turns: _isInfoExpanded ? 0.0 : 0.0,
+                        child: Icon(
+                          _isInfoExpanded ? Icons.close : Icons.info_outline,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Animated info content
+                AnimatedSlide(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  offset: _isInfoExpanded ? Offset.zero : const Offset(-1.0, 0.0),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: _isInfoExpanded ? 1.0 : 0.0,
+                    child: Container(
+                      padding: const EdgeInsets.only(left: 50), // Space for the icon
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '@${video.author['name']}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            video.description,
+                            style: const TextStyle(color: Colors.white),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Interaction buttons
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  videoFeed.hasLiked ? Icons.favorite : Icons.favorite_border,
+                  color: isAuthenticated 
+                    ? (videoFeed.hasLiked ? Colors.red : Colors.white)
+                    : Colors.white.withOpacity(0.5),
+                ),
+                iconSize: 30,
+                onPressed: isAuthenticated ? _toggleLike : () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Please sign in to like videos'),
+                      action: SnackBarAction(
+                        label: 'Sign In',
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sign in functionality coming soon'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+              Text(
+                '${video.likesCount}',
+                style: TextStyle(
+                  color: isAuthenticated 
+                    ? Colors.white 
+                    : Colors.white.withOpacity(0.5)
+                ),
+              ),
+              const SizedBox(height: 16),
+              IconButton(
+                icon: const Icon(Icons.chat_bubble_outline),
+                color: Colors.white,
+                iconSize: 30,
+                onPressed: () {
+                  // TODO: Implement comments functionality
+                },
+              ),
+              Text(
+                '${video.commentsCount}',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<FirebaseAuth>();
@@ -70,12 +204,12 @@ class _HomeScreenState extends State<HomeScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // Video Player
             if (currentVideo != null)
               SizedBox.expand(
                 child: HLSVideoPlayer(
                   video: currentVideo,
                   autoplay: true,
+                  enableAudioOnInteraction: true,
                 ),
               ),
 
@@ -104,100 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Video Info Overlay (Bottom)
             if (currentVideo != null)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 16 + MediaQuery.of(context).padding.bottom,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        // Video Info (Left)
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '@${currentVideo.author['name']}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                currentVideo.description,
-                                style: const TextStyle(color: Colors.white),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Interaction Buttons (Right)
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                videoFeed.hasLiked ? Icons.favorite : Icons.favorite_border,
-                                color: isAuthenticated 
-                                  ? (videoFeed.hasLiked ? Colors.red : Colors.white)
-                                  : Colors.white.withOpacity(0.5),
-                              ),
-                              iconSize: 30,
-                              onPressed: isAuthenticated ? _toggleLike : () {
-                                // Show login prompt
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Text('Please sign in to like videos'),
-                                    action: SnackBarAction(
-                                      label: 'Sign In',
-                                      onPressed: () {
-                                        // TODO: Navigate to sign in screen
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Sign in functionality coming soon'),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            Text(
-                              '${currentVideo.likesCount}',
-                              style: TextStyle(
-                                color: isAuthenticated 
-                                  ? Colors.white 
-                                  : Colors.white.withOpacity(0.5)
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            IconButton(
-                              icon: const Icon(Icons.chat_bubble_outline),
-                              color: Colors.white,
-                              iconSize: 30,
-                              onPressed: () {
-                                // TODO: Implement comments functionality
-                              },
-                            ),
-                            Text(
-                              '${currentVideo.commentsCount}',
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              _buildVideoInfo(currentVideo, isAuthenticated, videoFeed),
 
             // Loading indicator
             if (videoFeed.isLoading)
