@@ -67,7 +67,15 @@ class VideoFeedProvider with ChangeNotifier {
         .toList();
       
       if (_videos.isNotEmpty) {
-        _currentVideo = _videos[0];
+        // Get fresh data for the initial video
+        final initialVideoId = _videos[0].id;
+        final freshVideo = await _videoRepository.getVideoById(initialVideoId);
+        if (freshVideo != null) {
+          _videos[0] = freshVideo;
+          _currentVideo = freshVideo;
+        } else {
+          _currentVideo = _videos[0];
+        }
         await _checkLikeStatus();
       }
       
@@ -85,7 +93,17 @@ class VideoFeedProvider with ChangeNotifier {
     if (_videos.isEmpty) return;
     
     _currentIndex = (_currentIndex + 1) % _videos.length;
-    _currentVideo = _videos[_currentIndex];
+    
+    // Refresh video data from Firestore
+    final videoId = _videos[_currentIndex].id;
+    final updatedVideo = await _videoRepository.getVideoById(videoId);
+    if (updatedVideo != null) {
+      _videos[_currentIndex] = updatedVideo;
+      _currentVideo = updatedVideo;
+    } else {
+      _currentVideo = _videos[_currentIndex];
+    }
+    
     await _checkLikeStatus();
     notifyListeners();
     dev.log('Next video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
@@ -96,7 +114,17 @@ class VideoFeedProvider with ChangeNotifier {
     if (_videos.isEmpty || _currentIndex <= 0) return;
     
     _currentIndex--;
-    _currentVideo = _videos[_currentIndex];
+    
+    // Refresh video data from Firestore
+    final videoId = _videos[_currentIndex].id;
+    final updatedVideo = await _videoRepository.getVideoById(videoId);
+    if (updatedVideo != null) {
+      _videos[_currentIndex] = updatedVideo;
+      _currentVideo = updatedVideo;
+    } else {
+      _currentVideo = _videos[_currentIndex];
+    }
+    
     await _checkLikeStatus();
     notifyListeners();
     dev.log('Previous video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
