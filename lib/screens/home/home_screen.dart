@@ -355,13 +355,31 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Container(
                 height: 56,
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.search, color: Colors.white),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const SearchScreen(),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(50),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const SearchScreen(),
+                              ),
+                            ),
+                            hoverColor: Colors.white.withOpacity(0.2),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Icon(
+                                Icons.search,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
