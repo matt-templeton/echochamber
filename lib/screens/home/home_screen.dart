@@ -39,7 +39,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _videoFeedProvider = context.read<VideoFeedProvider>();
       _navigationManager = NavigationStateManager();
       _screenState = HomeScreenState(_videoFeedProvider);
-      _pageController = PageController();
+      _pageController = PageController(
+        initialPage: 1000, // Start at a large number to allow "infinite" scrolling both ways
+        viewportFraction: 1.0,
+      );
       _navigationManager.navigateToScreen(_screenState);
       _isInitialized = true;
     }
@@ -224,8 +227,9 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             if (currentVideo != null)
               PageView.builder(
-                scrollDirection: Axis.vertical,
+                scrollDirection: Axis.horizontal,
                 controller: _pageController,
+                physics: const ClampingScrollPhysics(),
                 onPageChanged: (index) {
                   videoFeed.moveToNextVideo();
                 },
