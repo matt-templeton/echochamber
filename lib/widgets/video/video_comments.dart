@@ -121,149 +121,153 @@ class _VideoCommentsState extends State<VideoComments> {
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             offset: _selectedComment != null ? const Offset(-1, 0) : Offset.zero,
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.grey[800]!,
-                        width: 0.5,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Comments',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        iconSize: 24,
-                        color: Colors.white,
-                        onPressed: widget.onCollapse,
-                      ),
-                    ],
-                  ),
-                ),
-                // Filter tabs
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Row(
-                    children: [
-                      _FilterChip(
-                        label: 'Top',
-                        isSelected: _isTopSelected,
-                        onTap: () => setState(() => _isTopSelected = true),
-                      ),
-                      const SizedBox(width: 8),
-                      _FilterChip(
-                        label: 'Newest',
-                        isSelected: !_isTopSelected,
-                        onTap: () => setState(() => _isTopSelected = false),
-                      ),
-                    ],
-                  ),
-                ),
-                // Comments list
-                Expanded(
-                  child: RawScrollbar(
-                    thumbColor: Colors.white.withOpacity(0.2),
-                    radius: const Radius.circular(20),
-                    thickness: 4,
-                    thumbVisibility: false,
-                    trackVisibility: false,
-                    child: StreamBuilder<List<Comment>>(
-                      stream: VideoRepository().getVideoComments(widget.videoId),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          dev.log('Error in comments StreamBuilder: ${snapshot.error}', 
-                            name: 'VideoComments', 
-                            error: snapshot.error);
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Error loading comments',
-                                  style: TextStyle(color: Colors.red[400]),
-                                ),
-                                if (snapshot.error.toString().contains('requires an index')) ...[
-                                  const SizedBox(height: 8),
-                                  const Text(
-                                    'Missing Firestore index',
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        }
-
-                        if (!snapshot.hasData) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
-                        final comments = snapshot.data!;
-                        if (comments.isEmpty) {
-                          return const Center(
-                            child: Text(
-                              'No comments yet',
+            child: SizedBox(
+              height: expandedHeight,
+              child: SafeArea(
+                bottom: false,  // Don't pad the bottom
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,  // Only take needed space
+                  children: [
+                    // Header - fixed height
+                    SizedBox(
+                      height: 48,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Comments',
                               style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 16,
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          );
-                        }
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              iconSize: 24,
+                              color: Colors.white,
+                              onPressed: widget.onCollapse,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Filter tabs - fixed height
+                    SizedBox(
+                      height: 44,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          children: [
+                            _FilterChip(
+                              label: 'Top',
+                              isSelected: _isTopSelected,
+                              onTap: () => setState(() => _isTopSelected = true),
+                            ),
+                            const SizedBox(width: 8),
+                            _FilterChip(
+                              label: 'Newest',
+                              isSelected: !_isTopSelected,
+                              onTap: () => setState(() => _isTopSelected = false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Comments list - takes remaining space
+                    Expanded(
+                      child: RawScrollbar(
+                        thumbColor: Colors.white.withOpacity(0.2),
+                        radius: const Radius.circular(20),
+                        thickness: 4,
+                        thumbVisibility: false,
+                        trackVisibility: false,
+                        child: StreamBuilder<List<Comment>>(
+                          stream: VideoRepository().getVideoComments(widget.videoId),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              dev.log('Error in comments StreamBuilder: ${snapshot.error}', 
+                                name: 'VideoComments', 
+                                error: snapshot.error);
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Error loading comments',
+                                      style: TextStyle(color: Colors.red[400]),
+                                    ),
+                                    if (snapshot.error.toString().contains('requires an index')) ...[
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Missing Firestore index',
+                                        style: TextStyle(color: Colors.grey),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            }
 
-                        // Sort comments based on selected filter
-                        if (_isTopSelected) {
-                          comments.sort((a, b) => b.likesCount.compareTo(a.likesCount));
-                        } else {
-                          comments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                        }
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
 
-                        return ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: comments.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: 16),
-                          itemBuilder: (context, index) {
-                            final comment = comments[index];
-                            return CommentItem(
-                              username: '@${comment.authorMetadata['name'] ?? 'user'}',
-                              timeAgo: _getTimeAgo(comment.createdAt),
-                              content: comment.text,
-                              likesCount: comment.likesCount,
-                              repliesCount: comment.repliesCount,
-                              profileLetter: (comment.authorMetadata['name'] as String?)?.isNotEmpty == true
-                                  ? (comment.authorMetadata['name'] as String).characters.first.toUpperCase()
-                                  : 'U',
-                              commentId: comment.id,
-                              videoId: widget.videoId,
-                              onReplyTap: () => _showReplies(comment),
-                              showReplyButton: true,
+                            final comments = snapshot.data!;
+                            if (comments.isEmpty) {
+                              return const Center(
+                                child: Text(
+                                  'No comments yet',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              );
+                            }
+
+                            // Sort comments based on selected filter
+                            if (_isTopSelected) {
+                              comments.sort((a, b) => b.likesCount.compareTo(a.likesCount));
+                            } else {
+                              comments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                            }
+
+                            return ListView.separated(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: comments.length,
+                              separatorBuilder: (context, index) => const SizedBox(height: 16),
+                              itemBuilder: (context, index) {
+                                final comment = comments[index];
+                                return CommentItem(
+                                  username: '@${comment.authorMetadata['name'] ?? 'user'}',
+                                  timeAgo: _getTimeAgo(comment.createdAt),
+                                  content: comment.text,
+                                  likesCount: comment.likesCount,
+                                  repliesCount: comment.repliesCount,
+                                  profileLetter: (comment.authorMetadata['name'] as String?)?.isNotEmpty == true
+                                      ? (comment.authorMetadata['name'] as String).characters.first.toUpperCase()
+                                      : 'U',
+                                  commentId: comment.id,
+                                  videoId: widget.videoId,
+                                  onReplyTap: () => _showReplies(comment),
+                                  showReplyButton: true,
+                                );
+                              },
                             );
                           },
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
+                    // Comment input
+                    _buildCommentInput(isAuthenticated, auth),
+                  ],
                 ),
-                // Comment input
-                _buildCommentInput(isAuthenticated, auth),
-              ],
+              ),
             ),
           ),
           // Replies view
@@ -272,10 +276,132 @@ class _VideoCommentsState extends State<VideoComments> {
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
               offset: _selectedComment != null ? Offset.zero : const Offset(1, 0),
-              child: CommentReplies(
-                comment: _selectedComment!,
-                videoId: widget.videoId,
-                onBack: _hideReplies,
+              child: SizedBox(
+                height: expandedHeight,
+                child: Material(
+                  color: Colors.black,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Header - fixed height
+                        SizedBox(
+                          height: 48,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back),
+                                  color: Colors.white,
+                                  onPressed: _hideReplies,
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Replies',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Original comment
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: CommentItem(
+                            username: '@${_selectedComment!.authorMetadata['name'] ?? 'user'}',
+                            timeAgo: _getTimeAgo(_selectedComment!.createdAt),
+                            content: _selectedComment!.text,
+                            likesCount: _selectedComment!.likesCount,
+                            repliesCount: _selectedComment!.repliesCount,
+                            profileLetter: (_selectedComment!.authorMetadata['name'] as String?)?.isNotEmpty == true
+                                ? (_selectedComment!.authorMetadata['name'] as String).characters.first.toUpperCase()
+                                : 'U',
+                            commentId: _selectedComment!.id,
+                            videoId: widget.videoId,
+                            showReplyButton: false,
+                          ),
+                        ),
+
+                        // Replies list - takes remaining space
+                        Expanded(
+                          child: RawScrollbar(
+                            thumbColor: Colors.white.withOpacity(0.2),
+                            radius: const Radius.circular(20),
+                            thickness: 4,
+                            thumbVisibility: false,
+                            trackVisibility: false,
+                            child: StreamBuilder<List<Comment>>(
+                              stream: VideoRepository().getCommentReplies(widget.videoId, _selectedComment!.id),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasError) {
+                                  dev.log('Error loading replies: ${snapshot.error}', name: 'CommentReplies');
+                                  return const Center(
+                                    child: Text(
+                                      'No replies yet',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                if (!snapshot.hasData) {
+                                  return const Center(child: CircularProgressIndicator());
+                                }
+
+                                final replies = snapshot.data!;
+                                if (replies.isEmpty) {
+                                  return const Center(
+                                    child: Text(
+                                      'No replies yet',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                return ListView.separated(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: replies.length,
+                                  separatorBuilder: (context, index) => const SizedBox(height: 16),
+                                  itemBuilder: (context, index) {
+                                    final reply = replies[index];
+                                    return CommentItem(
+                                      username: '@${reply.authorMetadata['name'] ?? 'user'}',
+                                      timeAgo: _getTimeAgo(reply.createdAt),
+                                      content: reply.text,
+                                      likesCount: reply.likesCount,
+                                      repliesCount: 0,
+                                      profileLetter: (reply.authorMetadata['name'] as String?)?.isNotEmpty == true
+                                          ? (reply.authorMetadata['name'] as String).characters.first.toUpperCase()
+                                          : 'U',
+                                      commentId: reply.id,
+                                      videoId: widget.videoId,
+                                      showReplyButton: false,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+
+                        // Reply input
+                        _buildCommentInput(isAuthenticated, auth),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
         ],
@@ -621,287 +747,5 @@ class _CommentAction extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class CommentReplies extends StatefulWidget {
-  final Comment comment;
-  final String videoId;
-  final VoidCallback onBack;
-
-  const CommentReplies({
-    Key? key,
-    required this.comment,
-    required this.videoId,
-    required this.onBack,
-  }) : super(key: key);
-
-  @override
-  State<CommentReplies> createState() => _CommentRepliesState();
-}
-
-class _CommentRepliesState extends State<CommentReplies> {
-  final TextEditingController _replyController = TextEditingController();
-  bool _isSubmitting = false;
-
-  @override
-  void dispose() {
-    _replyController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submitReply() async {
-    final text = _replyController.text.trim();
-    if (text.isEmpty || _isSubmitting) return;
-
-    final auth = context.read<FirebaseAuth>();
-    final user = auth.currentUser;
-    if (user == null) return;
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final repository = VideoRepository();
-      await repository.addComment(
-        widget.videoId,
-        user.uid,
-        text,
-        parentCommentId: widget.comment.id,
-      );
-      
-      if (mounted) {
-        _replyController.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reply added successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to add reply: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<FirebaseAuth>();
-    final isAuthenticated = auth.currentUser != null;
-
-    return Material(
-      color: Colors.black,
-      child: Column(
-        children: [
-          // Header
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: Colors.grey[800]!,
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  color: Colors.white,
-                  onPressed: widget.onBack,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Replies',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Original comment
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: CommentItem(
-              username: '@${widget.comment.authorMetadata['name'] ?? 'user'}',
-              timeAgo: _getTimeAgo(widget.comment.createdAt),
-              content: widget.comment.text,
-              likesCount: widget.comment.likesCount,
-              repliesCount: widget.comment.repliesCount,
-              profileLetter: (widget.comment.authorMetadata['name'] as String?)?.isNotEmpty == true
-                  ? (widget.comment.authorMetadata['name'] as String).characters.first.toUpperCase()
-                  : 'U',
-              commentId: widget.comment.id,
-              videoId: widget.videoId,
-              showReplyButton: false,
-            ),
-          ),
-
-          // Replies list
-          Expanded(
-            child: RawScrollbar(
-              thumbColor: Colors.white.withOpacity(0.2),
-              radius: const Radius.circular(20),
-              thickness: 4,
-              thumbVisibility: false,
-              trackVisibility: false,
-              child: StreamBuilder<List<Comment>>(
-                stream: VideoRepository().getCommentReplies(widget.videoId, widget.comment.id),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    dev.log('Error loading replies: ${snapshot.error}', name: 'CommentReplies');
-                    return const Center(
-                      child: Text(
-                        'No replies yet',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 16,
-                        ),
-                      ),
-                    );
-                  }
-
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final replies = snapshot.data!;
-                  if (replies.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No replies yet',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 16,
-                        ),
-                      ),
-                    );
-                  }
-
-                  return ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: replies.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 16),
-                    itemBuilder: (context, index) {
-                      final reply = replies[index];
-                      return CommentItem(
-                        username: '@${reply.authorMetadata['name'] ?? 'user'}',
-                        timeAgo: _getTimeAgo(reply.createdAt),
-                        content: reply.text,
-                        likesCount: reply.likesCount,
-                        repliesCount: 0,
-                        profileLetter: (reply.authorMetadata['name'] as String?)?.isNotEmpty == true
-                            ? (reply.authorMetadata['name'] as String).characters.first.toUpperCase()
-                            : 'U',
-                        commentId: reply.id,
-                        videoId: widget.videoId,
-                        showReplyButton: false,
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // Reply input
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              border: Border(
-                top: BorderSide(
-                  color: Colors.grey[800]!,
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: isAuthenticated ? Colors.pink : Colors.grey[800],
-                  radius: 18,
-                  child: Text(
-                    isAuthenticated 
-                        ? (auth.currentUser?.displayName?.characters.first.toUpperCase() ?? 'U')
-                        : '?',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _replyController,
-                    style: const TextStyle(color: Colors.white),
-                    enabled: isAuthenticated && !_isSubmitting,
-                    decoration: InputDecoration(
-                      hintText: isAuthenticated 
-                          ? 'Add a reply...'
-                          : 'Sign in to reply',
-                      hintStyle: TextStyle(
-                        color: isAuthenticated ? Colors.grey : Colors.grey[700],
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                    onSubmitted: isAuthenticated ? (_) => _submitReply() : null,
-                  ),
-                ),
-                if (isAuthenticated && _replyController.text.isNotEmpty)
-                  IconButton(
-                    icon: _isSubmitting 
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Icon(Icons.send),
-                    color: Colors.white,
-                    onPressed: _isSubmitting ? null : _submitReply,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'just now';
-    }
   }
 } 
