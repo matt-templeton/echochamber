@@ -314,6 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
               VideoComments(
                 isExpanded: _isCommentsExpanded,
                 onCollapse: _toggleComments,
+                videoId: currentVideo.id,
               ),
           ],
         ),

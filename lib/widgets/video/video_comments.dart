@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../repositories/video_repository.dart';
+import '../../models/comment_model.dart';
 
 class VideoComments extends StatefulWidget {
   final bool isExpanded;
   final VoidCallback onCollapse;
+  final String videoId;
 
   const VideoComments({
     Key? key,
     required this.isExpanded,
     required this.onCollapse,
+    required this.videoId,
   }) : super(key: key);
 
   @override
@@ -17,6 +23,7 @@ class VideoComments extends StatefulWidget {
 class _VideoCommentsState extends State<VideoComments> {
   bool _isTopSelected = true;
   final TextEditingController _commentController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -24,10 +31,53 @@ class _VideoCommentsState extends State<VideoComments> {
     super.dispose();
   }
 
+  Future<void> _submitComment() async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty || _isSubmitting) return;
+
+    final auth = context.read<FirebaseAuth>();
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final repository = VideoRepository();
+      await repository.addComment(widget.videoId, user.uid, text);
+      
+      if (mounted) {
+        _commentController.clear();
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Comment added successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to add comment: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final expandedHeight = screenHeight * 0.5;  // 50% of screen height
+    final expandedHeight = screenHeight * 0.5;
+    final auth = context.watch<FirebaseAuth>();
+    final isAuthenticated = auth.currentUser != null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -99,36 +149,70 @@ class _VideoCommentsState extends State<VideoComments> {
           ),
           // Comments list
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: const [
-                CommentItem(
-                  username: '@2152mohamed',
-                  timeAgo: '1h ago',
-                  content: 'This is the only new outlet that I listen every morning. Thanks AMY',
-                  likesCount: 85,
-                  repliesCount: 2,
-                  profileLetter: 'M',
-                ),
-                SizedBox(height: 16),
-                CommentItem(
-                  username: '@donaldmuhammad2411',
-                  timeAgo: '1h ago',
-                  content: 'this is the way news should be done!',
-                  likesCount: 52,
-                  repliesCount: 0,
-                  profileLetter: 'D',
-                ),
-                SizedBox(height: 16),
-                CommentItem(
-                  username: '@annerfrancis',
-                  timeAgo: '56 min ago',
-                  content: 'Great content as always! Keep it up',
-                  likesCount: 23,
-                  repliesCount: 1,
-                  profileLetter: 'A',
-                ),
-              ],
+            child: RawScrollbar(
+              thumbColor: Colors.white.withOpacity(0.2),
+              radius: const Radius.circular(20),
+              thickness: 4,
+              thumbVisibility: false,
+              trackVisibility: false,
+              child: StreamBuilder<List<Comment>>(
+                stream: VideoRepository().getVideoComments(widget.videoId),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Error loading comments',
+                        style: TextStyle(color: Colors.red[400]),
+                      ),
+                    );
+                  }
+
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+
+                  final comments = snapshot.data!;
+                  if (comments.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No comments yet',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 16,
+                        ),
+                      ),
+                    );
+                  }
+
+                  // Sort comments based on selected filter
+                  if (_isTopSelected) {
+                    comments.sort((a, b) => b.likesCount.compareTo(a.likesCount));
+                  } else {
+                    comments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: comments.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 16),
+                    itemBuilder: (context, index) {
+                      final comment = comments[index];
+                      return CommentItem(
+                        username: '@${comment.authorMetadata['name'] ?? 'user'}',
+                        timeAgo: _getTimeAgo(comment.createdAt),
+                        content: comment.text,
+                        likesCount: comment.likesCount,
+                        repliesCount: comment.repliesCount,
+                        profileLetter: (comment.authorMetadata['name'] as String?)?.isNotEmpty == true
+                            ? (comment.authorMetadata['name'] as String).characters.first.toUpperCase()
+                            : 'U',
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ),
           // Comment input
@@ -146,11 +230,13 @@ class _VideoCommentsState extends State<VideoComments> {
             child: Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.pink,
+                  backgroundColor: isAuthenticated ? Colors.pink : Colors.grey[800],
                   radius: 18,
-                  child: const Text(
-                    'M',
-                    style: TextStyle(
+                  child: Text(
+                    isAuthenticated 
+                        ? (auth.currentUser?.displayName?.characters.first.toUpperCase() ?? 'U')
+                        : '?',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
@@ -161,21 +247,57 @@ class _VideoCommentsState extends State<VideoComments> {
                   child: TextField(
                     controller: _commentController,
                     style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'Add a comment...',
-                      hintStyle: TextStyle(color: Colors.grey),
+                    enabled: isAuthenticated && !_isSubmitting,
+                    decoration: InputDecoration(
+                      hintText: isAuthenticated 
+                          ? 'Add a comment...'
+                          : 'Sign in to comment',
+                      hintStyle: TextStyle(
+                        color: isAuthenticated ? Colors.grey : Colors.grey[700],
+                      ),
                       border: InputBorder.none,
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
+                    onSubmitted: isAuthenticated ? (_) => _submitComment() : null,
                   ),
                 ),
+                if (isAuthenticated && _commentController.text.isNotEmpty)
+                  IconButton(
+                    icon: _isSubmitting 
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Icon(Icons.send),
+                    color: Colors.white,
+                    onPressed: _isSubmitting ? null : _submitComment,
+                  ),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'just now';
+    }
   }
 }
 
