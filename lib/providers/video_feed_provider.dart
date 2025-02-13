@@ -178,6 +178,34 @@ class VideoFeedProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadVideoById(String videoId) async {
+    dev.log('Loading video by ID: $videoId', name: 'VideoFeedProvider');
+    _setLoading(true);
+    
+    try {
+      final video = await _videoRepository.getVideoById(videoId);
+      if (video != null) {
+        // Find video in current list or add it
+        final index = _videos.indexWhere((v) => v.id == videoId);
+        if (index >= 0) {
+          _videos[index] = video;
+          _currentIndex = index;
+        } else {
+          _videos.insert(0, video);
+          _currentIndex = 0;
+        }
+        _currentVideo = video;
+        await _checkLikeStatus();
+      }
+      _error = null;
+    } catch (e) {
+      dev.log('Error loading video by ID', name: 'VideoFeedProvider', error: e);
+      _error = 'Error loading video: $e';
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   @override
   void dispose() {
     _positionUpdateTimer?.cancel();

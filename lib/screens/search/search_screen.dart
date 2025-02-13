@@ -306,13 +306,7 @@ class _SearchScreenState extends State<SearchScreen> {
         final video = _videos[index];
         return InkWell(
           onTap: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => HomeScreen(
-                  initialVideoId: video.id,
-                ),
-              ),
-            );
+            Navigator.of(context).pop(video.id);
           },
           child: Card(
             clipBehavior: Clip.antiAlias,

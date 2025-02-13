@@ -374,15 +374,30 @@ class _HomeScreenState extends State<HomeScreen> {
                               _wasPlayingBeforeSearch = playerState.controller?.value.isPlaying ?? false;
                               playerState.pauseVideo();
                               
-                              // Wait for navigation to complete
-                              await Navigator.of(context).push(
+                              // Wait for navigation to complete and get selected video ID
+                              final selectedVideoId = await Navigator.of(context).push<String>(
                                 MaterialPageRoute(
                                   builder: (context) => const SearchScreen(),
                                 ),
                               );
+
+                              if (!mounted) return;  // Check if widget is still mounted
+
+                              // If a video was selected
+                              if (selectedVideoId != null) {
+                                // First update the video feed
+                                await _videoFeedProvider.loadVideoById(selectedVideoId);
+                                // Then clean up the old player state if widget is still mounted
+                                if (mounted) {
+                                  setState(() {
+                                    _currentPlayerState = null;
+                                  });
+                                }
+                                return;
+                              }
                               
-                              // Resume only if it was playing before
-                              if (_wasPlayingBeforeSearch) {
+                              // If no video was selected and widget is still mounted, resume previous video if it was playing
+                              if (mounted && _wasPlayingBeforeSearch) {
                                 playerState.resumeVideo();
                               }
                             },
