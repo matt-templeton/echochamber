@@ -31,6 +31,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isInitialized = false;
   bool _isInfoExpanded = true;  // Track expansion state
   bool _isAnimating = false;
+  bool _isDragging = false;
+  HLSVideoPlayerState? _currentPlayerState;
+
+  static const double _kSwipeThreshold = 0.3; // 30% of screen width
 
   @override
   void didChangeDependencies() {
@@ -77,6 +81,82 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       _isAnimating = false;
     }
+  }
+
+  void _onDragStart(DragStartDetails details) {
+    _isDragging = true;
+    _currentPlayerState?.pauseVideo();
+  }
+
+  void _onDragEnd(DragEndDetails details, BuildContext context) {
+    if (!_isDragging) return;
+    _isDragging = false;
+
+    final velocity = details.primaryVelocity ?? 0;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dragDistance = _pageController.offset - (_pageController.page ?? 0) * screenWidth;
+    final dragPercentage = dragDistance.abs() / screenWidth;
+
+    // Resume video if not transitioning
+    if (dragPercentage < _kSwipeThreshold && velocity.abs() < 300) {
+      _currentPlayerState?.resumeVideo();
+      _pageController.animateToPage(
+        _pageController.page!.round(),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+
+    // Determine swipe direction
+    if ((dragDistance > 0 && dragPercentage > _kSwipeThreshold) || velocity > 300) {
+      // Swipe right - go to previous video if possible
+      if (_videoFeedProvider.canGoBack) {
+        _pageController.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else {
+        // Bounce back if at start
+        _currentPlayerState?.resumeVideo();
+        _pageController.animateToPage(
+          _pageController.page!.round(),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    } else if ((dragDistance < 0 && dragPercentage > _kSwipeThreshold) || velocity < -300) {
+      // Swipe left - go to next video
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    } else {
+      // Not enough drag, bounce back
+      _currentPlayerState?.resumeVideo();
+      _pageController.animateToPage(
+        _pageController.page!.round(),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    if (!_isDragging) return;
+    
+    // Update page position based on drag
+    final screenWidth = MediaQuery.of(context).size.width;
+    final currentPage = _pageController.page ?? 0;
+    final dragDistance = details.primaryDelta ?? 0;
+    final newPage = currentPage - (dragDistance / screenWidth);
+    
+    // Only allow dragging right if we can go back
+    if (!_videoFeedProvider.canGoBack && newPage < currentPage) {
+      return;
+    }
+    
+    _pageController.jumpTo(_pageController.offset - dragDistance);
   }
 
   Widget _buildVideoInfo(Video video, bool isAuthenticated, VideoFeedProvider videoFeed) {
@@ -226,24 +306,34 @@ class _HomeScreenState extends State<HomeScreen> {
           fit: StackFit.expand,
           children: [
             if (currentVideo != null)
-              PageView.builder(
-                scrollDirection: Axis.horizontal,
-                controller: _pageController,
-                physics: const ClampingScrollPhysics(),
-                onPageChanged: (index) {
-                  videoFeed.moveToNextVideo();
-                },
-                itemBuilder: (context, index) {
-                  return SizedBox.expand(
-                    child: HLSVideoPlayer(
-                      key: ValueKey(currentVideo.id),
-                      video: currentVideo,
-                      autoplay: true,
-                      enableAudioOnInteraction: true,
-                      onVideoEnd: _animateToNextVideo,
-                    ),
-                  );
-                },
+              GestureDetector(
+                onHorizontalDragStart: _onDragStart,
+                onHorizontalDragUpdate: _onDragUpdate,
+                onHorizontalDragEnd: (details) => _onDragEnd(details, context),
+                child: PageView.builder(
+                  scrollDirection: Axis.horizontal,
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(), // Disable default scrolling
+                  onPageChanged: (index) {
+                    if (index > (_pageController.page ?? 0)) {
+                      videoFeed.moveToNextVideo();
+                    } else {
+                      videoFeed.moveToPreviousVideo();
+                    }
+                  },
+                  itemBuilder: (context, index) {
+                    return SizedBox.expand(
+                      child: HLSVideoPlayer(
+                        key: ValueKey(currentVideo.id),
+                        video: currentVideo,
+                        autoplay: true,
+                        enableAudioOnInteraction: true,
+                        onVideoEnd: _animateToNextVideo,
+                        onPlayerStateCreated: (state) => _currentPlayerState = state,
+                      ),
+                    );
+                  },
+                ),
               ),
 
             // UI Overlay (Top)

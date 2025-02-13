@@ -43,6 +43,7 @@ class HLSVideoPlayer extends StatefulWidget {
   final bool showControls;
   final VoidCallback? onVideoEnd;
   final bool enableAudioOnInteraction;
+  final Function(HLSVideoPlayerState)? onPlayerStateCreated;
 
   const HLSVideoPlayer({
     Key? key,
@@ -51,6 +52,7 @@ class HLSVideoPlayer extends StatefulWidget {
     this.showControls = true,
     this.onVideoEnd,
     this.enableAudioOnInteraction = false,
+    this.onPlayerStateCreated,
   }) : super(key: key);
 
   @override
@@ -72,6 +74,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    widget.onPlayerStateCreated?.call(this);
     // Always show controls initially on web
     if (kIsWeb) {
       _showControls = true;
@@ -189,6 +192,16 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         videoFeedProvider.markUserInteractedWithAudio();
         _controller?.setVolume(1.0);
       }
+    }
+  }
+
+  void pauseVideo() {
+    _controller?.pause();
+  }
+
+  void resumeVideo() {
+    if (!_isDisposed && mounted) {
+      _controller?.play();
     }
   }
 

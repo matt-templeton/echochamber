@@ -43,6 +43,7 @@ class VideoFeedProvider with ChangeNotifier {
   bool get hasLiked => _hasLiked;
   bool get isPaused => _isPaused;
   bool get hasUserInteractedWithAudio => _hasUserInteractedWithAudio;
+  bool get canGoBack => _currentIndex > 0;
 
   void setEnabled(bool enabled) {
     if (_isEnabled == enabled) return;
@@ -88,6 +89,17 @@ class VideoFeedProvider with ChangeNotifier {
     await _checkLikeStatus();
     notifyListeners();
     dev.log('Next video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
+  }
+
+  Future<void> moveToPreviousVideo() async {
+    dev.log('Moving to previous video. Current index: $_currentIndex', name: 'VideoFeedProvider');
+    if (_videos.isEmpty || _currentIndex <= 0) return;
+    
+    _currentIndex--;
+    _currentVideo = _videos[_currentIndex];
+    await _checkLikeStatus();
+    notifyListeners();
+    dev.log('Previous video: ${_currentVideo?.id}', name: 'VideoFeedProvider');
   }
 
   void _setLoading(bool loading) {
