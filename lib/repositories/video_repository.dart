@@ -236,15 +236,26 @@ class VideoRepository {
       parentCommentId: parentCommentId,
     );
     
-    batch.set(commentRef, comment.toFirestore());
+    // Convert comment to Firestore data and ensure parentCommentId is included
+    final commentData = comment.toFirestore();
+    if (parentCommentId != null) {
+      commentData['parentCommentId'] = parentCommentId;
+    }
+    
+    batch.set(commentRef, commentData);
 
-    // If this is a reply, increment parent comment's reply count
+    // If this is a reply, check if parent comment exists and increment its reply count
     if (parentCommentId != null) {
       final parentRef = _firestore
           .collection(_collection)
           .doc(videoId)
           .collection('comments')
           .doc(parentCommentId);
+      
+      final parentDoc = await parentRef.get();
+      if (!parentDoc.exists) {
+        throw Exception('Parent comment not found');
+      }
       
       batch.update(parentRef, {
         'repliesCount': FieldValue.increment(1),
@@ -267,21 +278,33 @@ class VideoRepository {
     int limit = 20,
     DocumentSnapshot? startAfter,
   }) {
-    var query = _firestore
+    Query<Map<String, dynamic>> query = _firestore
         .collection(_collection)
         .doc(videoId)
-        .collection('comments')
-        .where('parentCommentId', isEqualTo: parentCommentId)
-        .orderBy('createdAt', descending: true)
-        .limit(limit);
+        .collection('comments');
 
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
+    try {
+      // Simplified query - just order by createdAt first
+      query = query.orderBy('createdAt', descending: true);
+
+      // Then filter client-side for now
+      return query.snapshots().map((snapshot) {
+        dev.log('Got ${snapshot.docs.length} comments', name: 'VideoRepository');
+        return snapshot.docs
+          .map((doc) => Comment.fromFirestore(doc))
+          .where((comment) => 
+            parentCommentId == null 
+              ? comment.parentCommentId == null 
+              : comment.parentCommentId == parentCommentId)
+          .toList();
+      }).handleError((error) {
+        dev.log('Error in getVideoComments: $error', name: 'VideoRepository', error: error);
+        throw error;
+      });
+    } catch (e) {
+      dev.log('Error setting up comments query: $e', name: 'VideoRepository', error: e);
+      rethrow;
     }
-
-    return query.snapshots().map((snapshot) =>
-      snapshot.docs.map((doc) => Comment.fromFirestore(doc)).toList()
-    );
   }
 
   // Edit a comment
