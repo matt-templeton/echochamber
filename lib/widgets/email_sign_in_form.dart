@@ -135,6 +135,8 @@ class _EmailSignInFormState extends State<EmailSignInForm> {
               border: OutlineInputBorder(),
             ),
             obscureText: true,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _signIn(),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Please enter your password';
