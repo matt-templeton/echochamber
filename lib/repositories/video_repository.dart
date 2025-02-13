@@ -629,7 +629,7 @@ class VideoRepository {
       query = query.where('tags', arrayContains: tags.first);
     }
 
-    // Apply search query if specified
+    // Apply search query if specified and not empty
     if (searchQuery != null && searchQuery.isNotEmpty) {
       final searchLower = searchQuery.toLowerCase();
       final end = searchLower.substring(0, searchLower.length - 1) +
@@ -637,7 +637,19 @@ class VideoRepository {
       dev.log('Searching titleLower field: >="$searchLower" AND <"$end"', name: 'VideoRepository');
       query = query.where('titleLower', isGreaterThanOrEqualTo: searchLower)
                   .where('titleLower', isLessThan: end);
+    } else {
+      // For empty queries, sort by uploadedAt
+      dev.log('Empty search query, sorting by uploadedAt', name: 'VideoRepository');
+      query = query.orderBy('uploadedAt', descending: true);
     }
+
+    // Apply startAfter if provided
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+
+    // Apply limit
+    query = query.limit(limit);
 
     // Execute query
     final snapshot = await query.get();
@@ -664,14 +676,6 @@ class VideoRepository {
       }
       return true;
     }).toList();
-
-    // Sort by uploadedAt client-side instead of in query
-    results.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
-    
-    // Apply limit after sorting
-    if (results.length > limit) {
-      results = results.sublist(0, limit);
-    }
     
     dev.log('Returning ${results.length} filtered results', name: 'VideoRepository');
     return results;

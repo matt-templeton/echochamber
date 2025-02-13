@@ -148,11 +148,6 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      if (_searchController.text.isEmpty && _selectedGenres == null && _selectedTags == null) {
-        await _loadInitialVideos();
-        return;
-      }
-
       final results = await _repository.searchVideos(
         searchQuery: _searchController.text,
         genres: _selectedGenres,
