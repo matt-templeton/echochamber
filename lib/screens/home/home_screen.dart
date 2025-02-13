@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../widgets/video/hls_video_player.dart';
+import '../../widgets/video/video_comments.dart';
 import '../../widgets/primary_nav_bar.dart';
 import '../../models/video_model.dart';
 // import '../../repositories/video_repository.dart';
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isAnimating = false;
   bool _isDragging = false;
   bool _wasPlayingBeforeSearch = false;
+  bool _isCommentsExpanded = false;  // Add this line
   HLSVideoPlayerState? _currentPlayerState;
 
   static const double _kSwipeThreshold = 0.3; // 30% of screen width
@@ -61,6 +63,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleLike() async {
     await _videoFeedProvider.toggleLike();
+  }
+
+  void _toggleComments() {  // Add this method
+    setState(() {
+      _isCommentsExpanded = !_isCommentsExpanded;
+    });
   }
 
   @override
@@ -165,6 +173,164 @@ class _HomeScreenState extends State<HomeScreen> {
         _currentPlayerState?.resumeVideo();
       });
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<FirebaseAuth>();
+    final isAuthenticated = auth.currentUser != null;
+    final videoFeed = context.watch<VideoFeedProvider>();
+    final currentVideo = videoFeed.currentVideo;
+
+    return WillPopScope(
+      onWillPop: () async => false,  // Prevent back gesture
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Column(  // Wrap Stack in Column
+          children: [
+            // Video and overlays container
+            Expanded(  // This will take remaining space after comments
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (currentVideo != null)
+                    GestureDetector(
+                      onHorizontalDragStart: _onDragStart,
+                      onHorizontalDragUpdate: _onDragUpdate,
+                      onHorizontalDragEnd: (details) => _onDragEnd(details, context),
+                      child: PageView.builder(
+                        scrollDirection: Axis.horizontal,
+                        controller: _pageController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        onPageChanged: (index) {
+                          final currentPage = _pageController.page ?? 0;
+                          if (index > currentPage) {
+                            videoFeed.moveToNextVideo();
+                          } else if (videoFeed.canGoBack) {
+                            videoFeed.moveToPreviousVideo();
+                          } else {
+                            _pageController.jumpToPage(currentPage.round());
+                          }
+                        },
+                        itemBuilder: (context, index) {
+                          return SizedBox.expand(
+                            child: HLSVideoPlayer(
+                              key: ValueKey(currentVideo.id),
+                              video: currentVideo,
+                              autoplay: true,
+                              enableAudioOnInteraction: true,
+                              onVideoEnd: _animateToNextVideo,
+                              onPlayerStateCreated: (state) => _currentPlayerState = state,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                  // UI Overlay (Top)
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      height: 56,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(50),
+                                  onTap: () async {
+                                    final playerState = _currentPlayerState;
+                                    if (playerState == null) return;
+                                    
+                                    _wasPlayingBeforeSearch = playerState.controller?.value.isPlaying ?? false;
+                                    playerState.pauseVideo();
+                                    
+                                    final selectedVideoId = await Navigator.of(context).push<String>(
+                                      MaterialPageRoute(
+                                        builder: (context) => const SearchScreen(),
+                                      ),
+                                    );
+
+                                    if (!mounted) return;
+
+                                    if (selectedVideoId != null) {
+                                      await _videoFeedProvider.loadVideoById(selectedVideoId);
+                                      if (mounted) {
+                                        setState(() {
+                                          _currentPlayerState = null;
+                                        });
+                                      }
+                                      return;
+                                    }
+                                    
+                                    if (mounted && _wasPlayingBeforeSearch) {
+                                      playerState.resumeVideo();
+                                    }
+                                  },
+                                  hoverColor: Colors.white.withOpacity(0.2),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(
+                                      Icons.search,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Video Info Overlay (Bottom)
+                  if (currentVideo != null)
+                    _buildVideoInfo(currentVideo, isAuthenticated, videoFeed),
+
+                  // Loading indicator
+                  if (videoFeed.isLoading)
+                    const Positioned(
+                      bottom: 100,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Comments section
+            if (currentVideo != null)
+              VideoComments(
+                isExpanded: _isCommentsExpanded,
+                onCollapse: _toggleComments,
+              ),
+          ],
+        ),
+        bottomNavigationBar: PrimaryNavBar(
+          selectedIndex: 0,  // Home is selected
+          onItemSelected: (index) {
+            if (index == 4) {  // Profile tab
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => const ProfileScreen(),
+                ),
+              );
+            }
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildVideoInfo(Video video, bool isAuthenticated, VideoFeedProvider videoFeed) {
@@ -284,9 +450,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.chat_bubble_outline),
                 color: Colors.white,
                 iconSize: 30,
-                onPressed: () {
-                  // TODO: Implement comments functionality
-                },
+                onPressed: _toggleComments,  // Update this line
               ),
               Text(
                 '${video.commentsCount}',
@@ -295,158 +459,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<FirebaseAuth>();
-    final isAuthenticated = auth.currentUser != null;
-    final videoFeed = context.watch<VideoFeedProvider>();
-    final currentVideo = videoFeed.currentVideo;
-
-    return WillPopScope(
-      onWillPop: () async => false,  // Prevent back gesture
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (currentVideo != null)
-              GestureDetector(
-                onHorizontalDragStart: _onDragStart,
-                onHorizontalDragUpdate: _onDragUpdate,
-                onHorizontalDragEnd: (details) => _onDragEnd(details, context),
-                child: PageView.builder(
-                  scrollDirection: Axis.horizontal,
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(), // Disable default scrolling
-                  onPageChanged: (index) {
-                    final currentPage = _pageController.page ?? 0;
-                    if (index > currentPage) {
-                      videoFeed.moveToNextVideo();
-                    } else if (videoFeed.canGoBack) {
-                      videoFeed.moveToPreviousVideo();
-                    } else {
-                      // If we can't go back, force the page back to current
-                      _pageController.jumpToPage(currentPage.round());
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    return SizedBox.expand(
-                      child: HLSVideoPlayer(
-                        key: ValueKey(currentVideo.id),
-                        video: currentVideo,
-                        autoplay: true,
-                        enableAudioOnInteraction: true,
-                        onVideoEnd: _animateToNextVideo,
-                        onPlayerStateCreated: (state) => _currentPlayerState = state,
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-            // UI Overlay (Top)
-            Positioned(
-              top: MediaQuery.of(context).padding.top,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 56,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(50),
-                            onTap: () async {
-                              final playerState = _currentPlayerState;
-                              if (playerState == null) return;
-                              
-                              // Store whether video was playing
-                              _wasPlayingBeforeSearch = playerState.controller?.value.isPlaying ?? false;
-                              playerState.pauseVideo();
-                              
-                              // Wait for navigation to complete and get selected video ID
-                              final selectedVideoId = await Navigator.of(context).push<String>(
-                                MaterialPageRoute(
-                                  builder: (context) => const SearchScreen(),
-                                ),
-                              );
-
-                              if (!mounted) return;  // Check if widget is still mounted
-
-                              // If a video was selected
-                              if (selectedVideoId != null) {
-                                // First update the video feed
-                                await _videoFeedProvider.loadVideoById(selectedVideoId);
-                                // Then clean up the old player state if widget is still mounted
-                                if (mounted) {
-                                  setState(() {
-                                    _currentPlayerState = null;
-                                  });
-                                }
-                                return;
-                              }
-                              
-                              // If no video was selected and widget is still mounted, resume previous video if it was playing
-                              if (mounted && _wasPlayingBeforeSearch) {
-                                playerState.resumeVideo();
-                              }
-                            },
-                            hoverColor: Colors.white.withOpacity(0.2),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Icon(
-                                Icons.search,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Video Info Overlay (Bottom)
-            if (currentVideo != null)
-              _buildVideoInfo(currentVideo, isAuthenticated, videoFeed),
-
-            // Loading indicator
-            if (videoFeed.isLoading)
-              const Positioned(
-                bottom: 100,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-          ],
-        ),
-        bottomNavigationBar: PrimaryNavBar(
-          selectedIndex: 0,  // Home is selected
-          onItemSelected: (index) {
-            if (index == 4) {  // Profile tab
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => const ProfileScreen(),
-                ),
-              );
-            }
-          },
-        ),
       ),
     );
   }

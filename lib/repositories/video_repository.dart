@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/video_model.dart';
+import '../models/comment_model.dart';
 import 'dart:developer' as dev;
 
 class VideoRepository {
@@ -205,39 +206,226 @@ class VideoRepository {
   }
 
   // Add a comment to a video
-  Future<void> addComment(String videoId, String userId, String comment) async {
+  Future<Comment> addComment(String videoId, String userId, String text, {String? parentCommentId}) async {
     final batch = _firestore.batch();
     
-    // Add to comments subcollection
+    // Get user metadata for caching
+    final userDoc = await _firestore.collection('users').doc(userId).get();
+    final userData = userDoc.data() as Map<String, dynamic>;
+    
+    final authorMetadata = {
+      'name': userData['name'],
+      'profilePictureUrl': userData['profilePictureUrl'],
+    };
+    
+    // Create comment document
     final commentRef = _firestore
         .collection(_collection)
         .doc(videoId)
         .collection('comments')
         .doc();
     
-    batch.set(commentRef, {
-      'userId': userId,
-      'comment': comment,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    final now = DateTime.now();
+    final comment = Comment(
+      id: commentRef.id,
+      videoId: videoId,
+      userId: userId,
+      text: text,
+      createdAt: now,
+      authorMetadata: authorMetadata,
+      parentCommentId: parentCommentId,
+    );
+    
+    batch.set(commentRef, comment.toFirestore());
 
-    // Increment comments count
+    // If this is a reply, increment parent comment's reply count
+    if (parentCommentId != null) {
+      final parentRef = _firestore
+          .collection(_collection)
+          .doc(videoId)
+          .collection('comments')
+          .doc(parentCommentId);
+      
+      batch.update(parentRef, {
+        'repliesCount': FieldValue.increment(1),
+      });
+    }
+
+    // Increment video's comment count
     final videoRef = _firestore.collection(_collection).doc(videoId);
     batch.update(videoRef, {
       'commentsCount': FieldValue.increment(1),
     });
 
     await batch.commit();
+    return comment;
   }
 
   // Get comments for a video
-  Stream<QuerySnapshot> getVideoComments(String videoId) {
-    return _firestore
+  Stream<List<Comment>> getVideoComments(String videoId, {
+    String? parentCommentId,
+    int limit = 20,
+    DocumentSnapshot? startAfter,
+  }) {
+    var query = _firestore
         .collection(_collection)
         .doc(videoId)
         .collection('comments')
+        .where('parentCommentId', isEqualTo: parentCommentId)
         .orderBy('createdAt', descending: true)
-        .snapshots();
+        .limit(limit);
+
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+
+    return query.snapshots().map((snapshot) =>
+      snapshot.docs.map((doc) => Comment.fromFirestore(doc)).toList()
+    );
+  }
+
+  // Edit a comment
+  Future<Comment> editComment(String videoId, String commentId, String newText) async {
+    final commentRef = _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId);
+    
+    await commentRef.update({
+      'text': newText,
+      'editedAt': FieldValue.serverTimestamp(),
+    });
+
+    final updatedDoc = await commentRef.get();
+    return Comment.fromFirestore(updatedDoc);
+  }
+
+  // Delete a comment
+  Future<void> deleteComment(String videoId, String commentId) async {
+    final batch = _firestore.batch();
+    
+    final commentRef = _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId);
+    
+    // Get comment data first to check if it's a reply
+    final commentDoc = await commentRef.get();
+    final commentData = commentDoc.data() as Map<String, dynamic>;
+    
+    // If this is a reply, decrement parent's reply count
+    if (commentData['parentCommentId'] != null) {
+      final parentRef = _firestore
+          .collection(_collection)
+          .doc(videoId)
+          .collection('comments')
+          .doc(commentData['parentCommentId']);
+      
+      batch.update(parentRef, {
+        'repliesCount': FieldValue.increment(-1),
+      });
+    }
+
+    // Delete the comment
+    batch.delete(commentRef);
+
+    // Decrement video's comment count
+    final videoRef = _firestore.collection(_collection).doc(videoId);
+    batch.update(videoRef, {
+      'commentsCount': FieldValue.increment(-1),
+    });
+
+    await batch.commit();
+  }
+
+  // Like a comment
+  Future<void> likeComment(String videoId, String commentId, String userId) async {
+    final batch = _firestore.batch();
+    
+    // Add to comment's likes subcollection
+    final likeRef = _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId)
+        .collection('likes')
+        .doc(userId);
+    
+    batch.set(likeRef, {
+      'userId': userId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Increment comment's like count
+    final commentRef = _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId);
+    
+    batch.update(commentRef, {
+      'likesCount': FieldValue.increment(1),
+    });
+
+    await batch.commit();
+  }
+
+  // Unlike a comment
+  Future<void> unlikeComment(String videoId, String commentId, String userId) async {
+    final batch = _firestore.batch();
+    
+    // Remove from comment's likes subcollection
+    final likeRef = _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId)
+        .collection('likes')
+        .doc(userId);
+    
+    batch.delete(likeRef);
+
+    // Decrement comment's like count
+    final commentRef = _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId);
+    
+    batch.update(commentRef, {
+      'likesCount': FieldValue.increment(-1),
+    });
+
+    await batch.commit();
+  }
+
+  // Check if user has liked a comment
+  Future<bool> hasUserLikedComment(String videoId, String commentId, String userId) async {
+    final doc = await _firestore
+        .collection(_collection)
+        .doc(videoId)
+        .collection('comments')
+        .doc(commentId)
+        .collection('likes')
+        .doc(userId)
+        .get();
+    
+    return doc.exists;
+  }
+
+  // Get replies to a comment
+  Stream<List<Comment>> getCommentReplies(String videoId, String commentId, {
+    int limit = 10,
+    DocumentSnapshot? startAfter,
+  }) {
+    return getVideoComments(
+      videoId,
+      parentCommentId: commentId,
+      limit: limit,
+      startAfter: startAfter,
+    );
   }
 
   // Get video quality variants
