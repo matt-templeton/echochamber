@@ -95,9 +95,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
       _controller = controller;
 
-      // Set initial volume to 0 on web to allow autoplay
+      // Set initial volume based on whether user has interacted
       if (kIsWeb) {
-        await controller.setVolume(0);
+        await controller.setVolume(_hasUserInteracted ? 1.0 : 0.0);
       }
 
       await controller.initialize();
@@ -111,14 +111,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       controller.addListener(_onVideoProgress);
 
       if (widget.autoplay) {
-        if (kIsWeb) {
-          // Web autoplay: start muted
-          controller.play();
-          // Start hide timer after play starts
-          _startHideControlsTimer();
-        } else {
-          controller.play();
-        }
+        controller.play();
+        // Start hide timer after play starts
+        _startHideControlsTimer();
       }
 
     } catch (e, stackTrace) {
