@@ -371,19 +371,33 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   Widget _buildProgressBar() {
-    if (!mounted || !_isInitialized) {
+    if (!mounted || !_isInitialized || _controller == null) {
       return const SizedBox.shrink();
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth == 0) {
+        // Handle invalid constraints
+        if (constraints.maxWidth <= 0) {
           return const SizedBox.shrink();
         }
 
         final duration = _controller!.value.duration;
         final position = _controller!.value.position;
-        final progress = position.inMilliseconds / duration.inMilliseconds;
+        
+        // Handle invalid duration or position
+        if (duration.inMilliseconds == 0) {
+          return const SizedBox.shrink();
+        }
+        
+        // Calculate progress with validation
+        final progress = (position.inMilliseconds / duration.inMilliseconds)
+            .clamp(0.0, 1.0);
+        
+        // Validate progress is a valid number
+        if (progress.isNaN || progress.isInfinite) {
+          return const SizedBox.shrink();
+        }
 
         return MouseRegion(
           cursor: SystemMouseCursors.click,
