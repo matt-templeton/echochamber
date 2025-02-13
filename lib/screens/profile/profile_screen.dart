@@ -100,19 +100,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _screenState = ProfileScreenState(_videoFeedProvider);
       _navigationManager.navigateToScreen(_screenState);
       _isInitialized = true;
+
+      // Listen to auth state changes
+      final auth = context.read<FirebaseAuth>();
+      auth.authStateChanges().listen((user) {
+        if (mounted) {
+          _loadUserData();
+        }
+      });
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    // Delay the initial load to ensure auth state has propagated
+    Future.microtask(_loadUserData);
   }
 
   Future<void> _loadUserData() async {
+    if (!mounted) return;
+
+    setState(() => _isLoading = true);
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       dev.log('No authenticated user found', name: 'ProfileScreen');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
       return;
     }
 
@@ -140,6 +156,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         dev.log('No user data found or widget unmounted', 
           name: 'ProfileScreen',
           error: 'userData: ${userData != null}, mounted: $mounted');
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     } catch (e, stackTrace) {
       dev.log(
