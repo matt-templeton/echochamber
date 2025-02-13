@@ -208,6 +208,8 @@ class _VideoCommentsState extends State<VideoComments> {
                         profileLetter: (comment.authorMetadata['name'] as String?)?.isNotEmpty == true
                             ? (comment.authorMetadata['name'] as String).characters.first.toUpperCase()
                             : 'U',
+                        commentId: comment.id,
+                        videoId: widget.videoId,
                       );
                     },
                   );
@@ -334,13 +336,15 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class CommentItem extends StatelessWidget {
+class CommentItem extends StatefulWidget {
   final String username;
   final String timeAgo;
   final String content;
   final int likesCount;
   final int repliesCount;
   final String profileLetter;
+  final String commentId;
+  final String videoId;
 
   const CommentItem({
     Key? key,
@@ -350,7 +354,80 @@ class CommentItem extends StatelessWidget {
     required this.likesCount,
     required this.repliesCount,
     required this.profileLetter,
+    required this.commentId,
+    required this.videoId,
   }) : super(key: key);
+
+  @override
+  State<CommentItem> createState() => _CommentItemState();
+}
+
+class _CommentItemState extends State<CommentItem> {
+  bool _isLiked = false;
+  bool _isLiking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIfLiked();
+  }
+
+  Future<void> _checkIfLiked() async {
+    final auth = context.read<FirebaseAuth>();
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final repository = VideoRepository();
+      final hasLiked = await repository.hasUserLikedComment(
+        widget.videoId,
+        widget.commentId,
+        user.uid,
+      );
+      if (mounted) {
+        setState(() => _isLiked = hasLiked);
+      }
+    } catch (e) {
+      // Silently handle error
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final auth = context.read<FirebaseAuth>();
+    final user = auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to like comments')),
+      );
+      return;
+    }
+
+    if (_isLiking) return;
+
+    setState(() => _isLiking = true);
+
+    try {
+      final repository = VideoRepository();
+      if (_isLiked) {
+        await repository.unlikeComment(widget.videoId, widget.commentId, user.uid);
+      } else {
+        await repository.likeComment(widget.videoId, widget.commentId, user.uid);
+      }
+      if (mounted) {
+        setState(() => _isLiked = !_isLiked);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to ${_isLiked ? 'unlike' : 'like'} comment')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLiking = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -362,7 +439,7 @@ class CommentItem extends StatelessWidget {
           backgroundColor: Colors.grey[800],
           radius: 16,
           child: Text(
-            profileLetter,
+            widget.profileLetter,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -378,7 +455,7 @@ class CommentItem extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    username,
+                    widget.username,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w500,
@@ -386,7 +463,7 @@ class CommentItem extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    timeAgo,
+                    widget.timeAgo,
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 12,
@@ -403,21 +480,22 @@ class CommentItem extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                content,
+                widget.content,
                 style: const TextStyle(color: Colors.white),
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
                   _CommentAction(
-                    icon: Icons.thumb_up_outlined,
-                    label: likesCount.toString(),
-                    onTap: () {},
+                    icon: _isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                    label: widget.likesCount.toString(),
+                    onTap: _toggleLike,
+                    isLoading: _isLiking,
                   ),
                   const SizedBox(width: 16),
                   _CommentAction(
                     icon: Icons.chat_bubble_outline,
-                    label: repliesCount > 0 ? '$repliesCount replies' : 'Reply',
+                    label: widget.repliesCount > 0 ? '${widget.repliesCount} replies' : 'Reply',
                     onTap: () {},
                   ),
                 ],
@@ -434,11 +512,13 @@ class _CommentAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   const _CommentAction({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.isLoading = false,
   });
 
   @override
@@ -447,11 +527,21 @@ class _CommentAction extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 16,
-            color: Colors.white,
-          ),
+          if (isLoading)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          else
+            Icon(
+              icon,
+              size: 16,
+              color: Colors.white,
+            ),
           const SizedBox(width: 4),
           Text(
             label,
