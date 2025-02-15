@@ -10,7 +10,7 @@ import soundfile as sf
 from spec.config import db, bucket
 from urllib.parse import urlparse
 
-@https_fn.on_call(
+@https_fn.on_request(
     cors=options.CorsOptions(
         cors_origins=["*"],
         cors_methods=["POST"]
@@ -32,11 +32,15 @@ def extract_audio_and_split(req: https_fn.CallableRequest) -> dict:
     """
     try:
         # Get request data and validate
-        data = req.data
+        data = json.loads(req.data)["data"] if isinstance(req.data, str) else req.data.get("data", {})
         video_id = data.get("videoId")
         
         if not video_id:
-            raise ValueError("Missing required field: videoId")
+            return https_fn.Response(
+                json.dumps({"message": "Missing required field: videoId"}),
+                status=400,
+                headers={"Content-Type": "application/json"}
+            ) 
 
         # Check if video exists in Firestore
         video_doc = db.collection("videos").document(video_id).get()
@@ -156,12 +160,25 @@ def extract_audio_and_split(req: https_fn.CallableRequest) -> dict:
         
         raise https_fn.HttpsError("internal", error_message)
         
+    except ValueError as e:
+        error_message = str(e)
+        print("error_message", error_message)
+        print("video_id", video_id)
+        if video_id:
+            db.collection("videos").document(video_id).update({
+                "audioProcessingStatus": "failed",
+                "audioProcessingError": error_message
+            })
+        
+        raise https_fn.HttpsError("internal", error_message)
+        
     except Exception as e:
         error_message = f"Error processing audio: {str(e)}"
         
-        db.collection("videos").document(video_id).update({
-            "audioProcessingStatus": "failed",
-            "audioProcessingError": error_message
-        })
+        if video_id:
+            db.collection("videos").document(video_id).update({
+                "audioProcessingStatus": "failed",
+                "audioProcessingError": error_message
+            })
         
         raise https_fn.HttpsError("internal", error_message)

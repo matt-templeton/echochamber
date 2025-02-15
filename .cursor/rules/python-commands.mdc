@@ -1,0 +1,49 @@
+---
+description: Rules for using Python commands in Windows PowerShell.
+globs: 
+---
+<rule>
+name: python_commands
+description: Standards for using Python commands in Windows
+filters:
+  - type: content
+    pattern: "python|pytest|pip"
+
+actions:
+  - type: suggest
+    message: |
+      When using Python commands in Windows PowerShell:
+
+      1. Python execution:
+         - Use `py` instead of `python`
+         - Example: `py script.py` NOT `python script.py`
+
+      2. Testing with pytest:
+         - Use direct path: `pytest path/to/test_file.py`
+         - Example: `pytest tests/test_audio_functions.py`
+
+      3. Package management:
+         - Use `py -m pip` for pip commands
+         - Example: `py -m pip install package_name`
+
+      4. Module execution:
+         - Use `py -m module_name`
+         - Example: `py -m pytest`
+
+examples:
+  - input: |
+      # Bad: Unix/Linux style commands
+      python script.py
+      python -m pytest
+      pip install package
+      
+      # Good: Windows Python commands
+      py script.py
+      pytest tests/test_file.py
+      py -m pip install package
+    output: "Correctly formatted Python commands for Windows"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

@@ -36,7 +36,7 @@ class VideoQualityVariant {
               'gs://', 
               'https://firebasestorage.googleapis.com/v0/b/'
             ) + '?alt=media' :
-            playlistUrl;
+            'https://firebasestorage.googleapis.com/v0/b/echo-chamber-8fb5f.appspot.com/o/$playlistUrl?alt=media';
 
   factory VideoQualityVariant.fromMap(Map<String, dynamic> map) {
     // Handle missing or null values
@@ -48,22 +48,10 @@ class VideoQualityVariant {
       throw FormatException('Missing playlistUrl in variant data');
     }
     
-    // Handle different URL formats
-    String transformedUrl = playlistUrl;
-    if (playlistUrl.startsWith('gs://')) {
-      // Convert gs:// URL to HTTPS
-      transformedUrl = playlistUrl
-        .replaceFirst('gs://', 'https://firebasestorage.googleapis.com/v0/b/')
-        + '?alt=media';
-    } else if (!playlistUrl.startsWith('http')) {
-      // Handle relative paths
-      transformedUrl = 'https://firebasestorage.googleapis.com/v0/b/echo-chamber-8fb5f.appspot.com/o/$playlistUrl?alt=media';
-    }
-    
     return VideoQualityVariant(
       quality: quality,
       bitrate: bitrate,
-      playlistUrl: transformedUrl,
+      playlistUrl: playlistUrl,
     );
   }
 
