@@ -14,6 +14,7 @@ import '../home/home_screen.dart';
 import 'dart:developer' as dev;
 import '../../navigation/screen_state.dart';
 import '../../providers/video_feed_provider.dart';
+import 'my_videos_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -537,6 +538,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // My Videos Button
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const MyVideosScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.video_library),
+                label: const Text('My Videos'),
+              ),
+              const SizedBox(height: 16),
 
               // Privacy Settings Button
               OutlinedButton.icon(
