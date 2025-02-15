@@ -56,3 +56,6 @@ laser/
 .cursorrules
 diff.md
 /node_modules
+/functions/node_modules/
+/functions/310/
+/functions/scratch/
