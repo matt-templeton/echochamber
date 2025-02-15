@@ -1,0 +1,46 @@
+---
+description: Rules for activating Python virtual environments in PowerShell.
+globs: 
+---
+<rule>
+name: venv_activation
+description: Standards for activating Python virtual environments in PowerShell
+filters:
+  - type: content
+    pattern: "venv|virtualenv|python.*activate"
+
+actions:
+  - type: suggest
+    message: |
+      When activating Python virtual environments in PowerShell:
+
+      1. Activation command:
+         - Use `& .\{venv_name}\Scripts\Activate.ps1`
+         - Example: `& .\310\Scripts\Activate.ps1`
+
+      2. Directory structure:
+         - Ensure you're in the directory containing the venv
+         - Virtual environment should be in project root
+
+      3. Verification:
+         - Check for (venv_name) in prompt after activation
+         - Example: `(310) PS C:\project>`
+
+      4. Deactivation:
+         - Use `deactivate` command when done
+         - No need for & operator for deactivation
+
+examples:
+  - input: |
+      # Bad: Unix/CMD style activation
+      source venv/bin/activate
+      activate.bat
+      
+      # Good: PowerShell activation
+      & .\310\Scripts\Activate.ps1
+    output: "Correctly activated virtual environment in PowerShell"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

@@ -1,0 +1,50 @@
+---
+description: Standards for writing PowerShell commands in the codebase
+globs: 
+---
+<rule>
+name: powershell_syntax
+description: 
+filters:
+  - type: content
+    pattern: "powershell|terminal|cmd|command"
+
+actions:
+  - type: suggest
+    message: |
+      When writing PowerShell commands:
+
+      1. Command separators:
+         - Use semicolon (;) instead of && for command chaining
+         - Example: `command1; command2; command3`
+
+      2. Path handling:
+         - Use backslashes (\) for Windows paths
+         - Wrap paths with spaces in quotes
+         - Example: `.\path\to\file.txt`
+
+      3. Script execution:
+         - Use & operator to execute scripts
+         - Example: `& .\script.ps1`
+
+      4. Variable syntax:
+         - Use $variable for variables
+         - Example: `$path = ".\directory"`
+
+      5. Command output:
+         - Use | for piping
+         - Example: `command | Select-Object`
+
+examples:
+  - input: |
+      # Bad: Unix-style syntax
+      cd dir && ./script.sh
+      
+      # Good: PowerShell syntax
+      cd dir; & .\script.ps1
+    output: "Correctly formatted PowerShell command"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

@@ -7,4 +7,6 @@ librosa
 openunmix
 musdb
 numpy==1.26.4
+soundfile
+torch
 ipython

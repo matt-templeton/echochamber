@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch
-from flask import Flask, request
+from flask import Flask
 from flask_cors import CORS
 from firebase_functions import https_fn
 import json
@@ -8,11 +8,9 @@ import requests
 from spec.validate_and_prepare_video import validate_and_prepare_video
 
 @pytest.fixture(autouse=True)
-def firebase_test_context():
+def app_context():
     app = Flask(__name__)
-    CORS(app, resources={
-        r"/*": {"origins": ["*"], "methods": ["POST"]}
-    })
+    CORS(app)
     with app.app_context():
         with app.test_request_context():
             yield
@@ -25,7 +23,9 @@ def mock_storage_blob():
 
 @pytest.fixture
 def mock_firestore_doc():
-    return Mock()
+    mock_doc = Mock()
+    mock_doc.exists = True
+    return mock_doc
 
 @pytest.fixture
 def mock_request():
@@ -37,15 +37,13 @@ def mock_request():
 def test_validate_and_prepare_video_success(mock_request, mock_storage_blob, mock_firestore_doc):
     # Arrange
     request_data = {
-        "data": {
-            "videoId": "test-video-id",
-            "userId": "test-user-id",
-            "title": "Test Video",
-            "description": "Test Description"
-        }
+        "videoId": "test-video-id",
+        "userId": "test-user-id",
+        "title": "Test Video",
+        "description": "Test Description"
     }
-    mock_request.data = json.dumps(request_data)
-    mock_request.json = request_data
+    mock_request.data = json.dumps({"data": request_data})
+    mock_request.json = {"data": request_data}
 
     # Mock OpenShot API responses
     mock_project_response = Mock()
@@ -67,8 +65,8 @@ def test_validate_and_prepare_video_success(mock_request, mock_storage_blob, moc
         }
     }
 
-    with patch("spec.validate_and_prepare_video.bucket") as mock_bucket, \
-         patch("spec.validate_and_prepare_video.db") as mock_db, \
+    with patch("spec.config.bucket") as mock_bucket, \
+         patch("spec.config.db") as mock_db, \
          patch("requests.post") as mock_post:
 
         # Setup mocks
@@ -97,17 +95,14 @@ def test_validate_and_prepare_video_success(mock_request, mock_storage_blob, moc
 
 def test_validate_and_prepare_video_missing_fields(mock_request):
     # Arrange
-    mock_request.method = "POST"
-    mock_request.headers = {"Content-Type": "application/json"}
-    inner_data = {
+    request_data = {
         "videoId": "test-video-id"
         # Missing userId
     }
-    request_data = {"data": inner_data}
-    mock_request.data = json.dumps(request_data)
-    mock_request.json = request_data
+    mock_request.data = json.dumps({"data": request_data})
+    mock_request.json = {"data": request_data}
     
-    with patch("spec.validate_and_prepare_video.db") as mock_db:
+    with patch("spec.config.db") as mock_db:
         mock_doc = Mock()
         mock_db.collection.return_value.document.return_value = mock_doc
         
@@ -123,18 +118,15 @@ def test_validate_and_prepare_video_missing_fields(mock_request):
 
 def test_validate_and_prepare_video_file_not_found(mock_request):
     # Arrange
-    mock_request.method = "POST"
-    mock_request.headers = {"Content-Type": "application/json"}
-    inner_data = {
+    request_data = {
         "videoId": "test-video-id",
         "userId": "test-user-id"
     }
-    request_data = {"data": inner_data}
-    mock_request.data = json.dumps(request_data)
-    mock_request.json = request_data
+    mock_request.data = json.dumps({"data": request_data})
+    mock_request.json = {"data": request_data}
     
-    with patch("spec.validate_and_prepare_video.bucket") as mock_bucket, \
-         patch("spec.validate_and_prepare_video.db") as mock_db:
+    with patch("spec.config.bucket") as mock_bucket, \
+         patch("spec.config.db") as mock_db:
         # Setup mocks
         mock_bucket.get_blob.return_value = None
         mock_doc = Mock()
@@ -158,18 +150,15 @@ def test_validate_and_prepare_video_file_not_found(mock_request):
 
 def test_validate_and_prepare_video_openshot_error(mock_request, mock_storage_blob, mock_firestore_doc):
     # Arrange
-    mock_request.method = "POST"
-    mock_request.headers = {"Content-Type": "application/json"}
-    inner_data = {
+    request_data = {
         "videoId": "test-video-id",
         "userId": "test-user-id"
     }
-    request_data = {"data": inner_data}
-    mock_request.data = json.dumps(request_data)
-    mock_request.json = request_data
+    mock_request.data = json.dumps({"data": request_data})
+    mock_request.json = {"data": request_data}
     
-    with patch("spec.validate_and_prepare_video.bucket") as mock_bucket, \
-         patch("spec.validate_and_prepare_video.db") as mock_db, \
+    with patch("spec.config.bucket") as mock_bucket, \
+         patch("spec.config.db") as mock_db, \
          patch("requests.post") as mock_post:
         
         # Setup mocks
