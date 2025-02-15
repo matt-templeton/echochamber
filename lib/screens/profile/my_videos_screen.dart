@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../repositories/video_repository.dart';
 import '../../models/video_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'video_details_screen.dart';
 
 class MyVideosScreen extends StatefulWidget {
   const MyVideosScreen({Key? key}) : super(key: key);
@@ -97,49 +98,58 @@ class _MyVideosScreenState extends State<MyVideosScreen> {
               final video = videos[index];
               return Card(
                 clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: video.thumbnailUrl != null
-                          ? Image.network(
-                              video.thumbnailUrl!,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(
-                              color: Colors.grey[700],
-                              child: const Center(
-                                child: Icon(Icons.video_library, size: 40),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => VideoDetailsScreen(video: video),
+                      ),
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: video.thumbnailUrl != null
+                            ? Image.network(
+                                video.thumbnailUrl!,
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                color: Colors.grey[700],
+                                child: const Center(
+                                  child: Icon(Icons.video_library, size: 40),
+                                ),
+                              ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              video.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${video.viewsCount} views',
+                              style: TextStyle(
+                                color: Theme.of(context).textTheme.bodySmall?.color,
+                                fontSize: 12,
                               ),
                             ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            video.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${video.viewsCount} views',
-                            style: TextStyle(
-                              color: Theme.of(context).textTheme.bodySmall?.color,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
