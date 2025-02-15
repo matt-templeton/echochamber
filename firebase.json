@@ -25,15 +25,26 @@
       "source": "functions",
       "codebase": "default",
       "ignore": [
-        "venv",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
-      ]
+        "*.local",
+        "__pycache__",
+        ".pytest_cache",
+        "tests"
+      ],
+      "runtime": "python311"
     }
   ],
   "storage": {
     "rules": "storage.rules"
+  },
+  "hosting": {
+    "source": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
   }
 }
