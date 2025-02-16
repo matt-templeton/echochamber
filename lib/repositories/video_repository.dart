@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/video_model.dart';
 import '../models/comment_model.dart';
+import '../models/audio_track_model.dart';
 import 'dart:developer' as dev;
 
 class VideoRepository {
@@ -952,4 +953,22 @@ class VideoRepository {
   //     rethrow;
   //   }
   // }
+
+  // Get audio tracks for a video
+  Future<List<AudioTrack>> getVideoAudioTracks(String videoId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(_collection)
+          .doc(videoId)
+          .collection('audio_tracks')
+          .get();
+      
+      return querySnapshot.docs
+          .map((doc) => AudioTrack.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      dev.log('Error getting audio tracks: $e', name: 'VideoRepository', error: e);
+      return [];
+    }
+  }
 } 

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
 import '../../models/video_model.dart';
+import '../../models/audio_track_model.dart';
 import '../../providers/video_feed_provider.dart';
+import '../../repositories/video_repository.dart';
+import 'audio_track_controls.dart';
 import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -70,6 +73,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _isDisposed = false;
   double _aspectRatio = 16 / 9;
   Timer? _hideControlsTimer;
+  bool _showAudioControls = false;
+  List<AudioTrack>? _audioTracks;
+  final Map<String, VideoPlayerController> _audioControllers = {};
 
   // Add getter for controller
   VideoPlayerController? get controller => _controller;
@@ -83,6 +89,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       _showControls = true;
     }
     _initializePlayer();
+    _loadAudioTracks();
   }
 
   Future<void> _initializePlayer() async {
@@ -130,6 +137,58 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         setState(() => _isError = true);
       }
     }
+  }
+
+  Future<void> _loadAudioTracks() async {
+    try {
+      final repository = VideoRepository();
+      final tracks = await repository.getVideoAudioTracks(widget.video.id);
+      if (mounted) {
+        setState(() => _audioTracks = tracks);
+      }
+    } catch (e) {
+      dev.log('Error loading audio tracks: $e', name: 'HLSVideoPlayer', error: e);
+    }
+  }
+
+  Future<void> _handleTrackToggle(String trackId, bool enabled) async {
+    final track = _audioTracks?.firstWhere((t) => t.id == trackId);
+    if (track == null) return;
+
+    if (enabled) {
+      // Initialize controller if needed
+      if (!_audioControllers.containsKey(trackId)) {
+        final controller = VideoPlayerController.network(
+          track.masterPlaylistUrl,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: true,
+            allowBackgroundPlayback: false,
+          ),
+        );
+        await controller.initialize();
+        _audioControllers[trackId] = controller;
+      }
+      
+      // Sync with main video position
+      final mainPosition = _controller?.value.position;
+      if (mainPosition != null) {
+        await _audioControllers[trackId]?.seekTo(mainPosition);
+      }
+      
+      // Start playback if main video is playing
+      if (_controller?.value.isPlaying ?? false) {
+        await _audioControllers[trackId]?.play();
+      }
+    } else {
+      // Stop and dispose controller
+      await _audioControllers[trackId]?.pause();
+      await _audioControllers[trackId]?.dispose();
+      _audioControllers.remove(trackId);
+    }
+  }
+
+  void _handleVolumeChange(String trackId, double volume) {
+    _audioControllers[trackId]?.setVolume(volume);
   }
 
   void _startHideControlsTimer() {
@@ -224,6 +283,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     _hideControlsTimer?.cancel();
     _isDisposed = true;
     _controller?.dispose();
+    // Dispose all audio controllers
+    for (final controller in _audioControllers.values) {
+      controller.dispose();
+    }
+    _audioControllers.clear();
     super.dispose();
   }
 
@@ -313,6 +377,37 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                   ),
                 ),
               ),
+
+              // Audio track controls
+              if (_audioTracks != null && _audioTracks!.isNotEmpty)
+                Positioned(
+                  right: 16,
+                  top: MediaQuery.of(context).padding.top + 8,
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: IconButton(
+                      icon: const Icon(Icons.multitrack_audio),
+                      color: Colors.white,
+                      onPressed: () => setState(() => _showAudioControls = !_showAudioControls),
+                    ),
+                  ),
+                ),
+
+              // Audio track controls panel
+              if (_audioTracks != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: AudioTrackControls(
+                    tracks: _audioTracks!,
+                    isExpanded: _showAudioControls,
+                    onCollapse: () => setState(() => _showAudioControls = false),
+                    onTrackToggle: _handleTrackToggle,
+                    onVolumeChange: _handleVolumeChange,
+                  ),
+                ),
             ],
           ),
         ),
