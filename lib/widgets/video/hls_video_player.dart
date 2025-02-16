@@ -752,21 +752,91 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                           ),
                           // Loop region highlight - moved after progress track to overlay it
                           if (_isLoopMode && _loopStartPosition != null)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                height: 4,
-                                margin: EdgeInsets.only(
-                                  left: constraints.maxWidth * (_loopStartPosition ?? 0),
+                            Stack(
+                              children: [
+                                // Loop region highlight
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    height: 4,
+                                    margin: EdgeInsets.only(
+                                      left: constraints.maxWidth * (_loopStartPosition ?? 0),
+                                    ),
+                                    width: constraints.maxWidth * 
+                                      ((_loopEndPosition ?? _loopStartPosition ?? 0) - (_loopStartPosition ?? 0))
+                                        .abs(),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
                                 ),
-                                width: constraints.maxWidth * 
-                                  ((_loopEndPosition ?? _loopStartPosition ?? 0) - (_loopStartPosition ?? 0))
-                                    .abs(),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.5),
-                                  borderRadius: BorderRadius.circular(2),
+                                // Start bracket handle
+                                Positioned(
+                                  left: constraints.maxWidth * (_loopStartPosition ?? 0) - 8,
+                                  top: -8,
+                                  bottom: -8,
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.resizeLeft,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onHorizontalDragUpdate: (details) {
+                                        if (!mounted || !_isInitialized) return;
+                                        setState(() {
+                                          _loopStartPosition = ((_loopStartPosition ?? 0) + 
+                                            details.delta.dx / constraints.maxWidth)
+                                              .clamp(0.0, (_loopEndPosition ?? 1.0));
+                                        });
+                                        // Restart loop with new positions
+                                        _startLooping();
+                                      },
+                                      child: Container(
+                                        width: 16,
+                                        child: Center(
+                                          child: Container(
+                                            width: 2,
+                                            height: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                // End bracket handle
+                                if (_loopEndPosition != null)
+                                  Positioned(
+                                    left: constraints.maxWidth * _loopEndPosition! - 8,
+                                    top: -8,
+                                    bottom: -8,
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.resizeRight,
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onHorizontalDragUpdate: (details) {
+                                          if (!mounted || !_isInitialized) return;
+                                          setState(() {
+                                            _loopEndPosition = (_loopEndPosition! + 
+                                              details.delta.dx / constraints.maxWidth)
+                                                .clamp(_loopStartPosition ?? 0.0, 1.0);
+                                          });
+                                          // Restart loop with new positions
+                                          _startLooping();
+                                        },
+                                        child: Container(
+                                          width: 16,
+                                          child: Center(
+                                            child: Container(
+                                              width: 2,
+                                              height: 16,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           // Progress indicator ball
                           Positioned(
@@ -815,6 +885,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (!mounted || !_isInitialized || _controller == null) return;
     if (_loopStartPosition == null || _loopEndPosition == null) return;
 
+    dev.log('Starting loop - start: $_loopStartPosition, end: $_loopEndPosition', name: 'HLSVideoPlayer');
+
     // Cancel any existing loop timer
     _loopTimer?.cancel();
 
@@ -822,8 +894,19 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     final startTime = duration * _loopStartPosition!;
     final endTime = duration * _loopEndPosition!;
 
-    // Start playback from loop start
-    _controller!.seekTo(startTime);
+    dev.log('Loop times - start: ${startTime.inMilliseconds}ms, end: ${endTime.inMilliseconds}ms', name: 'HLSVideoPlayer');
+
+    // Only start if we have a valid loop region
+    if (endTime <= startTime) {
+      dev.log('Invalid loop region - end time must be after start time', name: 'HLSVideoPlayer');
+      return;
+    }
+
+    // Start playback from loop start if we're outside the loop region
+    final currentPosition = _controller!.value.position;
+    if (currentPosition < startTime || currentPosition > endTime) {
+      _controller!.seekTo(startTime);
+    }
     _controller!.play();
 
     // Set up loop timer to check position and loop when needed
@@ -835,6 +918,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
       final position = _controller!.value.position;
       if (position >= endTime) {
+        dev.log('Loop end reached at ${position.inMilliseconds}ms, returning to start', name: 'HLSVideoPlayer');
         _controller!.seekTo(startTime);
       }
     });
