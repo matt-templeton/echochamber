@@ -80,6 +80,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _showAudioControls = false;
   List<AudioTrack>? _audioTracks;
   final Map<String, VideoPlayerController> _audioControllers = {};
+  final Map<String, bool> _enabledTracks = {};  // Track enabled state
+  final Map<String, double> _trackVolumes = {};  // Track volume state
 
   // Loop functionality state
   bool _isLoopMode = false;
@@ -105,8 +107,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   Future<void> _initializePlayer() async {
-    dev.log('Starting player initialization - videoId: ${widget.video.id}',
-      name: 'HLSVideoPlayer');
     
     try {
       final controller = VideoPlayerController.network(
@@ -158,6 +158,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       final tracks = await repository.getVideoAudioTracks(widget.video.id);
       if (mounted) {
         setState(() => _audioTracks = tracks);
+        // Initialize all audio controllers immediately
+        _initializeAudioControllers(tracks);
       }
       dev.log('Found ${tracks.length} audio tracks for video ${widget.video.id}', name: 'HLSVideoPlayer');
     } catch (e) {
@@ -165,71 +167,162 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     }
   }
 
+  Future<void> _initializeAudioControllers(List<AudioTrack> tracks) async {
+    dev.log('Initializing audio controllers for all tracks', name: 'HLSVideoPlayer');
+    
+    // Initialize track states
+    for (final track in tracks) {
+      _enabledTracks[track.id] = track.type == AudioTrackType.original;
+      _trackVolumes[track.id] = track.type == AudioTrackType.original ? 0.85 : 0.0;
+    }
+    
+    // Initialize all non-original tracks
+    for (final track in tracks) {
+      if (track.type == AudioTrackType.original) continue;
+      
+      try {
+        dev.log('Initializing controller for track ${track.id}', name: 'HLSVideoPlayer');
+        final controller = VideoPlayerController.network(
+          track.masterPlaylistUrl,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: true,
+            allowBackgroundPlayback: false,
+          ),
+        );
+        
+        await controller.initialize();
+        _audioControllers[track.id] = controller;
+        
+        // Start with volume at 0
+        await controller.setVolume(0.0);
+        
+        // Start playback immediately
+        if (_controller?.value.isPlaying ?? false) {
+          final position = _controller?.value.position;
+          if (position != null) {
+            await controller.seekTo(position);
+          }
+          await controller.play();
+        }
+        
+      } catch (e) {
+        dev.log('Error initializing controller for track ${track.id}: $e', 
+          name: 'HLSVideoPlayer', 
+          error: e);
+      }
+    }
+  }
+
   Future<void> _handleTrackToggle(String trackId, bool enabled) async {
     final track = _audioTracks?.firstWhere((t) => t.id == trackId);
     if (track == null) return;
 
-    dev.log('Toggling track ${track.type}: enabled=$enabled', name: 'HLSVideoPlayer');
+
+    // Update track state
+    _enabledTracks[trackId] = enabled;
+    _trackVolumes[trackId] = enabled ? 0.85 : 0.0;
 
     if (track.type == AudioTrackType.original) {
-      // If enabling original track
+      // For original track, just control main video volume
       if (enabled) {
-        dev.log('Enabling original track - unmuting main video', name: 'HLSVideoPlayer');
-        await _controller?.setVolume(1.0);
-        // Stop all other tracks
+        await _controller?.setVolume(0.85);  // Set to 85% volume when enabling
+        // Mute all other tracks
         for (final controller in _audioControllers.values) {
-          await controller.pause();
-          await controller.dispose();
+          await controller.setVolume(0.0);
         }
-        _audioControllers.clear();
-      }
-    } else {
-      // If this is an isolated track
-      if (enabled) {
-        // Mute main video when using isolated tracks
-        dev.log('Enabling isolated track - muting main video', name: 'HLSVideoPlayer');
-        await _controller?.setVolume(0.0);
-        
-        // Initialize controller if needed
-        if (!_audioControllers.containsKey(trackId)) {
-          final controller = VideoPlayerController.network(
-            track.masterPlaylistUrl,
-            videoPlayerOptions: VideoPlayerOptions(
-              mixWithOthers: true,
-              allowBackgroundPlayback: false,
-            ),
-          );
-          await controller.initialize();
-          _audioControllers[trackId] = controller;
-        }
-        
-        // Sync with main video position
-        final mainPosition = _controller?.value.position;
-        if (mainPosition != null) {
-          await _audioControllers[trackId]?.seekTo(mainPosition);
-        }
-        
-        // Start playback if main video is playing
-        if (_controller?.value.isPlaying ?? false) {
-          await _audioControllers[trackId]?.play();
+        // Update state for all other tracks
+        for (final t in _audioTracks ?? []) {
+          if (t.id != trackId) {
+            _enabledTracks[t.id] = false;
+            _trackVolumes[t.id] = 0.0;
+          }
         }
       } else {
-        // If disabling an isolated track
-        await _audioControllers[trackId]?.pause();
-        await _audioControllers[trackId]?.dispose();
-        _audioControllers.remove(trackId);
+        // If disabling original track, just mute it
+        await _controller?.setVolume(0.0);
+      }
+    } else {
+      // For isolated tracks
+      if (enabled) {
+        // Mute main video when using isolated tracks
+        await _controller?.setVolume(0.0);
+        await _audioControllers[trackId]?.setVolume(0.85);
+        // Update original track state
+        final originalTrack = _audioTracks?.firstWhere((t) => t.type == AudioTrackType.original);
+        if (originalTrack != null) {
+          _enabledTracks[originalTrack.id] = false;
+          _trackVolumes[originalTrack.id] = 0.0;
+        }
+      } else {
+        // Just mute this track
+        await _audioControllers[trackId]?.setVolume(0.0);
         
-        // If no isolated tracks are enabled, unmute main video
-        if (_audioControllers.isEmpty) {
-          dev.log('No isolated tracks active - unmuting main video', name: 'HLSVideoPlayer');
-          await _controller?.setVolume(1.0);
+        // If no isolated tracks have volume > 0, unmute main video
+        final anyIsolatedTracksEnabled = _audioControllers.values
+            .any((controller) => controller.value.volume > 0);
+        if (!anyIsolatedTracksEnabled) {
+          await _controller?.setVolume(0.85);
+          // Update original track state
+          final originalTrack = _audioTracks?.firstWhere((t) => t.type == AudioTrackType.original);
+          if (originalTrack != null) {
+            _enabledTracks[originalTrack.id] = true;
+            _trackVolumes[originalTrack.id] = 0.85;
+          }
         }
       }
     }
   }
 
   void _handleVolumeChange(String trackId, double volume) {
-    _audioControllers[trackId]?.setVolume(volume);
+    final track = _audioTracks?.firstWhere((t) => t.id == trackId);
+    if (track == null) return;
+
+    // Update track volume state
+    _trackVolumes[trackId] = volume;
+    _enabledTracks[trackId] = volume > 0;
+
+    if (track.type == AudioTrackType.original) {
+      _controller?.setVolume(volume);
+      if (volume > 0) {
+        // If original track volume is increased, mute all other tracks
+        for (final controller in _audioControllers.values) {
+          controller.setVolume(0.0);
+        }
+        // Update state for all other tracks
+        for (final t in _audioTracks ?? []) {
+          if (t.id != trackId) {
+            _enabledTracks[t.id] = false;
+            _trackVolumes[t.id] = 0.0;
+          }
+        }
+      }
+    } else {
+      // For isolated tracks
+      _audioControllers[trackId]?.setVolume(volume);
+      if (volume > 0) {
+        // If any isolated track has volume, mute main video
+        _controller?.setVolume(0.0);
+        // Update original track state
+        final originalTrack = _audioTracks?.firstWhere((t) => t.type == AudioTrackType.original);
+        if (originalTrack != null) {
+          _enabledTracks[originalTrack.id] = false;
+          _trackVolumes[originalTrack.id] = 0.0;
+        }
+      } else {
+        // If no isolated tracks have volume, unmute main video
+        final anyIsolatedTracksEnabled = _audioControllers.values
+            .any((controller) => controller.value.volume > 0);
+        if (!anyIsolatedTracksEnabled) {
+          _controller?.setVolume(0.85);
+          // Update original track state
+          final originalTrack = _audioTracks?.firstWhere((t) => t.type == AudioTrackType.original);
+          if (originalTrack != null) {
+            _enabledTracks[originalTrack.id] = true;
+            _trackVolumes[originalTrack.id] = 0.85;
+          }
+        }
+      }
+    }
   }
 
   void _startHideControlsTimer() {
@@ -257,12 +350,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       return;
     }
 
-    if (controller.value.position >= controller.value.duration) {
-      dev.log('Video reached end', name: 'HLSVideoPlayer');
+    if (controller.value.position >= controller.value.duration && !_isLoopMode) {
       
       // Reset video position to beginning
-      controller.seekTo(Duration.zero);
-      controller.pause();
+      _seekAllToPosition(Duration.zero);
+      _pauseAll();
       
       // Call onVideoEnd callback if provided
       widget.onVideoEnd?.call();
@@ -311,7 +403,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     
     _wasPlayingBeforeDrag = controller.value.isPlaying;
     if (_wasPlayingBeforeDrag) {
-      controller.pause();
+      _pauseAll();
     }
   }
 
@@ -321,7 +413,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (controller == null || !controller.value.isInitialized) return;
     
     if (_wasPlayingBeforeDrag) {
-      controller.play();
+      _playAll();
     }
   }
 
@@ -454,16 +546,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  child: AudioTrackControls(
-                    tracks: _audioTracks!,
-                    isExpanded: _showAudioControls,
-                    onCollapse: () {
-                      setState(() => _showAudioControls = false);
-                      widget.onAudioControlsVisibilityChanged?.call(false);
-                    },
-                    onTrackToggle: _handleTrackToggle,
-                    onVolumeChange: _handleVolumeChange,
-                  ),
+                  child: _buildAudioTrackControls(),
                 ),
 
               // Loop mode indicator - moved to last position in stack
@@ -480,7 +563,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                       elevation: 2,
                       child: InkWell(
                         onTap: () {
-                          dev.log('Loop exit button tapped', name: 'HLSVideoPlayer');
                           _exitLoopMode();
                         },
                         child: Padding(
@@ -542,11 +624,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                   }
                   
                   if (controller.value.isPlaying) {
-                    controller.pause();
+                    _pauseAll();
                     setState(() => _showControls = true);
                     _hideControlsTimer?.cancel();
                   } else {
-                    controller.play();
+                    _playAll();
                     _startHideControlsTimer();
                   }
                 },
@@ -874,6 +956,21 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     );
   }
 
+  Widget _buildAudioTrackControls() {
+    return AudioTrackControls(
+      tracks: _audioTracks!,
+      isExpanded: _showAudioControls,
+      onCollapse: () {
+        setState(() => _showAudioControls = false);
+        widget.onAudioControlsVisibilityChanged?.call(false);
+      },
+      onTrackToggle: _handleTrackToggle,
+      onVolumeChange: _handleVolumeChange,
+      initialEnabledTracks: _enabledTracks,
+      initialTrackVolumes: _trackVolumes,
+    );
+  }
+
   void _handleSeek(double dx, double maxWidth) {
     final progress = (dx / maxWidth).clamp(0.0, 1.0);
     final duration = _controller!.value.duration;
@@ -885,7 +982,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (!mounted || !_isInitialized || _controller == null) return;
     if (_loopStartPosition == null || _loopEndPosition == null) return;
 
-    dev.log('Starting loop - start: $_loopStartPosition, end: $_loopEndPosition', name: 'HLSVideoPlayer');
 
     // Cancel any existing loop timer
     _loopTimer?.cancel();
@@ -894,7 +990,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     final startTime = duration * _loopStartPosition!;
     final endTime = duration * _loopEndPosition!;
 
-    dev.log('Loop times - start: ${startTime.inMilliseconds}ms, end: ${endTime.inMilliseconds}ms', name: 'HLSVideoPlayer');
 
     // Only start if we have a valid loop region
     if (endTime <= startTime) {
@@ -905,9 +1000,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     // Start playback from loop start if we're outside the loop region
     final currentPosition = _controller!.value.position;
     if (currentPosition < startTime || currentPosition > endTime) {
-      _controller!.seekTo(startTime);
+      _seekAllToPosition(startTime);
     }
-    _controller!.play();
+    _playAll();
 
     // Set up loop timer to check position and loop when needed
     _loopTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
@@ -918,10 +1013,39 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
       final position = _controller!.value.position;
       if (position >= endTime) {
-        dev.log('Loop end reached at ${position.inMilliseconds}ms, returning to start', name: 'HLSVideoPlayer');
-        _controller!.seekTo(startTime);
+        _seekAllToPosition(startTime);
       }
     });
+  }
+
+  Future<void> _seekAllToPosition(Duration position) async {
+    // Seek main video
+    await _controller?.seekTo(position);
+    
+    // Seek all audio tracks
+    for (final controller in _audioControllers.values) {
+      await controller.seekTo(position);
+    }
+  }
+
+  Future<void> _playAll() async {
+    // Play main video
+    await _controller?.play();
+    
+    // Play all audio tracks
+    for (final controller in _audioControllers.values) {
+      await controller.play();
+    }
+  }
+
+  Future<void> _pauseAll() async {
+    // Pause main video
+    await _controller?.pause();
+    
+    // Pause all audio tracks
+    for (final controller in _audioControllers.values) {
+      await controller.pause();
+    }
   }
 
   void _exitLoopMode() {
@@ -931,17 +1055,13 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       return;
     }
     
-    dev.log('Controls visible: $_showControls', name: 'HLSVideoPlayer');
-    dev.log('Loop mode active: $_isLoopMode', name: 'HLSVideoPlayer');
     
     // Cancel the loop timer first
     _loopTimer?.cancel();
     _loopTimer = null;
-    dev.log('Loop timer cancelled', name: 'HLSVideoPlayer');
 
     // Store current position before resetting loop state
     final currentPosition = _controller?.value.position;
-    dev.log('Current position: ${currentPosition?.inMilliseconds}ms', name: 'HLSVideoPlayer');
     
     setState(() {
       _isLoopMode = false;
@@ -950,15 +1070,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       _isDragging = false;  // Ensure dragging state is reset
       _showControls = true; // Keep controls visible briefly
     });
-    dev.log('Loop state reset', name: 'HLSVideoPlayer');
     
     // If we have a valid position and controller, seek to it and continue playing
     if (currentPosition != null && _controller != null) {
       _controller!.seekTo(currentPosition);
-      dev.log('Seeked to current position', name: 'HLSVideoPlayer');
       if (_wasPlayingBeforeDrag) {
         _controller!.play();
-        dev.log('Resumed playback', name: 'HLSVideoPlayer');
         _startHideControlsTimer();
       }
     }

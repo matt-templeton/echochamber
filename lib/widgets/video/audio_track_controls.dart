@@ -126,6 +126,8 @@ class AudioTrackControls extends StatefulWidget {
   final VoidCallback onCollapse;
   final Function(String trackId, bool enabled) onTrackToggle;
   final Function(String trackId, double volume) onVolumeChange;
+  final Map<String, bool> initialEnabledTracks;
+  final Map<String, double> initialTrackVolumes;
 
   const AudioTrackControls({
     Key? key,
@@ -134,6 +136,8 @@ class AudioTrackControls extends StatefulWidget {
     required this.onCollapse,
     required this.onTrackToggle,
     required this.onVolumeChange,
+    required this.initialEnabledTracks,
+    required this.initialTrackVolumes,
   }) : super(key: key);
 
   @override
@@ -157,12 +161,45 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
       return 0;
     });
     
+    // Initialize with provided states
+    _enabledTracks.addAll(widget.initialEnabledTracks);
+    _trackVolumes.addAll(widget.initialTrackVolumes);
+    
+    // Initialize expansion state
     for (final track in _sortedTracks) {
-      _enabledTracks[track.id] = track.type == AudioTrackType.original;
-      _trackVolumes[track.id] = 1.0;
       _expandedTracks[track.id] = false;
     }
+    
+    // Update original track enabled state
+    final originalTrack = _sortedTracks.firstWhere(
+      (t) => t.type == AudioTrackType.original,
+      orElse: () => _sortedTracks.first,
+    );
+    _isOriginalEnabled = _enabledTracks[originalTrack.id] ?? false;
+    
     _logCurrentlyPlayingTracks();
+  }
+
+  @override
+  void didUpdateWidget(AudioTrackControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Update states if they've changed
+    if (oldWidget.initialEnabledTracks != widget.initialEnabledTracks) {
+      _enabledTracks.clear();
+      _enabledTracks.addAll(widget.initialEnabledTracks);
+    }
+    if (oldWidget.initialTrackVolumes != widget.initialTrackVolumes) {
+      _trackVolumes.clear();
+      _trackVolumes.addAll(widget.initialTrackVolumes);
+    }
+    
+    // Update original track enabled state
+    final originalTrack = _sortedTracks.firstWhere(
+      (t) => t.type == AudioTrackType.original,
+      orElse: () => _sortedTracks.first,
+    );
+    _isOriginalEnabled = _enabledTracks[originalTrack.id] ?? false;
   }
 
   void _logCurrentlyPlayingTracks() {
@@ -179,9 +216,7 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
         setState(() {
           for (final t in widget.tracks) {
             _enabledTracks[t.id] = t.id == track.id;
-            if (!_enabledTracks[t.id]!) {
-              _trackVolumes[t.id] = 0.0;
-            }
+            _trackVolumes[t.id] = t.id == track.id ? 0.85 : 0.0;
           }
           _isOriginalEnabled = true;
         });
@@ -191,9 +226,8 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
         final isEnabled = _enabledTracks[track.id] ?? false;
         _enabledTracks[track.id] = !isEnabled;
         final nowEnabled = _enabledTracks[track.id] ?? false;
-        if (!nowEnabled) {
-          _trackVolumes[track.id] = 0.0;
-        }
+        _trackVolumes[track.id] = nowEnabled ? 0.85 : 0.0;
+        
         final originalTrack = widget.tracks.firstWhere(
           (t) => t.type == AudioTrackType.original,
           orElse: () => widget.tracks.first,
