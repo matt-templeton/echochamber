@@ -643,14 +643,23 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
             onTapDown: (TapDownDetails details) {
               if (!mounted || !_isInitialized) return;
               
+              // Pause video immediately
+              _wasPlayingBeforeDrag = _controller!.value.isPlaying;
+              if (_wasPlayingBeforeDrag) {
+                _controller!.pause();
+              }
+              
               // Start timer for long press
               _longPressTimer = Timer(_longPressDuration, () {
                 if (mounted) {
                   setState(() {
                     _isLoopMode = true;
+                    _isDragging = true;  // Set dragging state when entering loop mode
                     _loopStartPosition = details.localPosition.dx / constraints.maxWidth;
                     _loopEndPosition = null;
                   });
+                  // Cancel hide controls timer to keep controls visible
+                  _hideControlsTimer?.cancel();
                 }
               });
             },
@@ -689,7 +698,19 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                               ),
                             ),
                           ),
-                          // Loop region highlight
+                          // Progress track
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: 4,
+                              width: constraints.maxWidth * progress,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                          // Loop region highlight - moved after progress track to overlay it
                           if (_isLoopMode && _loopStartPosition != null)
                             Align(
                               alignment: Alignment.centerLeft,
@@ -707,18 +728,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                                 ),
                               ),
                             ),
-                          // Progress track
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              height: 4,
-                              width: constraints.maxWidth * progress,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ),
                           // Progress indicator ball
                           Positioned(
                             left: (constraints.maxWidth * progress - 8).clamp(0, constraints.maxWidth - 16),
