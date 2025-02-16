@@ -80,6 +80,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   bool _showAudioControls = false;
   List<AudioTrack>? _audioTracks;
   final Map<String, VideoPlayerController> _audioControllers = {};
+  Timer? _audioLevelTimer;  // Add timer for audio level monitoring
 
   // Add getter for controller
   VideoPlayerController? get controller => _controller;
@@ -131,6 +132,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         controller.play();
         _startHideControlsTimer();
       }
+
+      // Start audio level monitoring
+      _startAudioLevelMonitoring();
 
     } catch (e, stackTrace) {
       dev.log('Error initializing video player: $e',
@@ -311,9 +315,38 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     }
   }
 
+  void _startAudioLevelMonitoring() {
+    _audioLevelTimer?.cancel();
+    _audioLevelTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      _monitorAudioLevel();
+    });
+  }
+
+  Future<void> _monitorAudioLevel() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    try {
+      // Attempt to access audio buffer through platform interface
+      final value = controller.value;
+      if (value.isPlaying) {
+        // For now, just log the position as a placeholder
+        // This is where we'll implement actual audio level monitoring
+        final position = value.position;
+        dev.log('Audio monitoring at position ${position.inMilliseconds}ms', 
+          name: 'HLSVideoPlayer');
+      }
+    } catch (e) {
+      dev.log('Error monitoring audio level: $e', 
+        name: 'HLSVideoPlayer', 
+        error: e);
+    }
+  }
+
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    _audioLevelTimer?.cancel();  // Clean up audio monitoring timer
     _isDisposed = true;
     _controller?.dispose();
     // Dispose all audio controllers
