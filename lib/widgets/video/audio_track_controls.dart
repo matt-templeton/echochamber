@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/audio_track_model.dart';
+import 'dart:developer' as dev;
 
 class AudioTrackControls extends StatefulWidget {
   final List<AudioTrack> tracks;
@@ -34,6 +35,15 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
       _enabledTracks[track.id] = track.type == AudioTrackType.original;
       _trackVolumes[track.id] = 1.0;
     }
+    _logCurrentlyPlayingTracks();
+  }
+
+  void _logCurrentlyPlayingTracks() {
+    final enabledTracks = widget.tracks.where((track) => _enabledTracks[track.id] == true);
+    final trackInfo = enabledTracks.map((track) => 
+      '${_getTrackLabel(track.type)} (volume: ${_trackVolumes[track.id]?.toStringAsFixed(2)})'
+    ).join(', ');
+    dev.log('Currently playing tracks: $trackInfo', name: 'AudioTrackControls');
   }
 
   void _handleTrackToggle(AudioTrack track) {
@@ -63,11 +73,13 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
     }
     
     widget.onTrackToggle(track.id, _enabledTracks[track.id]!);
+    _logCurrentlyPlayingTracks();
   }
 
   void _handleVolumeChange(AudioTrack track, double volume) {
     setState(() => _trackVolumes[track.id] = volume);
     widget.onVolumeChange(track.id, volume);
+    _logCurrentlyPlayingTracks();
   }
 
   String _getTrackLabel(AudioTrackType type) {
@@ -106,44 +118,45 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Header
-          SizedBox(
+          Container(
             height: 48,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Audio Tracks',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    iconSize: 24,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Audio Tracks',
+                  style: TextStyle(
                     color: Colors.white,
-                    onPressed: widget.onCollapse,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  iconSize: 24,
+                  color: Colors.white,
+                  onPressed: widget.onCollapse,
+                ),
+              ],
             ),
           ),
           // Track list
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: widget.tracks.length,
+              separatorBuilder: (context, index) => const Divider(color: Colors.white24),
               itemBuilder: (context, index) {
                 final track = widget.tracks[index];
                 final isEnabled = _enabledTracks[track.id] ?? false;
                 final volume = _trackVolumes[track.id] ?? 1.0;
 
                 return Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
@@ -181,7 +194,6 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
                         activeColor: Colors.white,
                         inactiveColor: Colors.white24,
                       ),
-                    const Divider(color: Colors.white24),
                   ],
                 );
               },

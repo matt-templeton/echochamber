@@ -47,6 +47,8 @@ class HLSVideoPlayer extends StatefulWidget {
   final VoidCallback? onVideoEnd;
   final bool enableAudioOnInteraction;
   final Function(HLSVideoPlayerState)? onPlayerStateCreated;
+  final VoidCallback? onAudioControlsShow;
+  final Function(bool isVisible)? onAudioControlsVisibilityChanged;
 
   const HLSVideoPlayer({
     Key? key,
@@ -56,6 +58,8 @@ class HLSVideoPlayer extends StatefulWidget {
     this.onVideoEnd,
     this.enableAudioOnInteraction = false,
     this.onPlayerStateCreated,
+    this.onAudioControlsShow,
+    this.onAudioControlsVisibilityChanged,
   }) : super(key: key);
 
   @override
@@ -141,11 +145,13 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
 
   Future<void> _loadAudioTracks() async {
     try {
+      dev.log('Loading audio tracks for video ${widget.video.id}', name: 'HLSVideoPlayer');
       final repository = VideoRepository();
       final tracks = await repository.getVideoAudioTracks(widget.video.id);
       if (mounted) {
         setState(() => _audioTracks = tracks);
       }
+      dev.log('Found ${tracks.length} audio tracks for video ${widget.video.id}', name: 'HLSVideoPlayer');
     } catch (e) {
       dev.log('Error loading audio tracks: $e', name: 'HLSVideoPlayer', error: e);
     }
@@ -155,35 +161,62 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     final track = _audioTracks?.firstWhere((t) => t.id == trackId);
     if (track == null) return;
 
-    if (enabled) {
-      // Initialize controller if needed
-      if (!_audioControllers.containsKey(trackId)) {
-        final controller = VideoPlayerController.network(
-          track.masterPlaylistUrl,
-          videoPlayerOptions: VideoPlayerOptions(
-            mixWithOthers: true,
-            allowBackgroundPlayback: false,
-          ),
-        );
-        await controller.initialize();
-        _audioControllers[trackId] = controller;
-      }
-      
-      // Sync with main video position
-      final mainPosition = _controller?.value.position;
-      if (mainPosition != null) {
-        await _audioControllers[trackId]?.seekTo(mainPosition);
-      }
-      
-      // Start playback if main video is playing
-      if (_controller?.value.isPlaying ?? false) {
-        await _audioControllers[trackId]?.play();
+    dev.log('Toggling track ${track.type}: enabled=$enabled', name: 'HLSVideoPlayer');
+
+    if (track.type == AudioTrackType.original) {
+      // If enabling original track
+      if (enabled) {
+        dev.log('Enabling original track - unmuting main video', name: 'HLSVideoPlayer');
+        await _controller?.setVolume(1.0);
+        // Stop all other tracks
+        for (final controller in _audioControllers.values) {
+          await controller.pause();
+          await controller.dispose();
+        }
+        _audioControllers.clear();
       }
     } else {
-      // Stop and dispose controller
-      await _audioControllers[trackId]?.pause();
-      await _audioControllers[trackId]?.dispose();
-      _audioControllers.remove(trackId);
+      // If this is an isolated track
+      if (enabled) {
+        // Mute main video when using isolated tracks
+        dev.log('Enabling isolated track - muting main video', name: 'HLSVideoPlayer');
+        await _controller?.setVolume(0.0);
+        
+        // Initialize controller if needed
+        if (!_audioControllers.containsKey(trackId)) {
+          final controller = VideoPlayerController.network(
+            track.masterPlaylistUrl,
+            videoPlayerOptions: VideoPlayerOptions(
+              mixWithOthers: true,
+              allowBackgroundPlayback: false,
+            ),
+          );
+          await controller.initialize();
+          _audioControllers[trackId] = controller;
+        }
+        
+        // Sync with main video position
+        final mainPosition = _controller?.value.position;
+        if (mainPosition != null) {
+          await _audioControllers[trackId]?.seekTo(mainPosition);
+        }
+        
+        // Start playback if main video is playing
+        if (_controller?.value.isPlaying ?? false) {
+          await _audioControllers[trackId]?.play();
+        }
+      } else {
+        // If disabling an isolated track
+        await _audioControllers[trackId]?.pause();
+        await _audioControllers[trackId]?.dispose();
+        _audioControllers.remove(trackId);
+        
+        // If no isolated tracks are enabled, unmute main video
+        if (_audioControllers.isEmpty) {
+          dev.log('No isolated tracks active - unmuting main video', name: 'HLSVideoPlayer');
+          await _controller?.setVolume(1.0);
+        }
+      }
     }
   }
 
@@ -378,8 +411,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                 ),
               ),
 
-              // Audio track controls
-              if (_audioTracks != null && _audioTracks!.isNotEmpty)
+              // Audio track controls button - only show when panel is closed
+              if (_audioTracks != null && _audioTracks!.isNotEmpty && !_showAudioControls)
                 Positioned(
                   right: 16,
                   top: MediaQuery.of(context).padding.top + 8,
@@ -389,7 +422,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                     child: IconButton(
                       icon: const Icon(Icons.multitrack_audio),
                       color: Colors.white,
-                      onPressed: () => setState(() => _showAudioControls = !_showAudioControls),
+                      onPressed: () {
+                        widget.onAudioControlsShow?.call();
+                        widget.onAudioControlsVisibilityChanged?.call(true);
+                        setState(() => _showAudioControls = true);
+                      },
                     ),
                   ),
                 ),
@@ -403,7 +440,10 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                   child: AudioTrackControls(
                     tracks: _audioTracks!,
                     isExpanded: _showAudioControls,
-                    onCollapse: () => setState(() => _showAudioControls = false),
+                    onCollapse: () {
+                      setState(() => _showAudioControls = false);
+                      widget.onAudioControlsVisibilityChanged?.call(false);
+                    },
                     onTrackToggle: _handleTrackToggle,
                     onVolumeChange: _handleVolumeChange,
                   ),

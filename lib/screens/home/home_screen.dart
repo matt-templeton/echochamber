@@ -35,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isDragging = false;
   bool _wasPlayingBeforeSearch = false;
   bool _isCommentsExpanded = false;  // Add this line
+  bool _isAudioControlsVisible = false;  // Add this line
   HLSVideoPlayerState? _currentPlayerState;
 
   static const double _kSwipeThreshold = 0.3; // 30% of screen width
@@ -221,6 +222,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               enableAudioOnInteraction: true,
                               onVideoEnd: _animateToNextVideo,
                               onPlayerStateCreated: (state) => _currentPlayerState = state,
+                              onAudioControlsShow: () {
+                                if (_isInfoExpanded) {
+                                  setState(() => _isInfoExpanded = false);
+                                }
+                              },
+                              onAudioControlsVisibilityChanged: (isVisible) {
+                                setState(() => _isAudioControlsVisible = isVisible);
+                              },
                             ),
                           );
                         },
@@ -293,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
 
                   // Video Info Overlay (Bottom)
-                  if (currentVideo != null)
+                  if (currentVideo != null && !_isAudioControlsVisible)
                     _buildVideoInfo(currentVideo, isAuthenticated, videoFeed),
 
                   // Loading indicator

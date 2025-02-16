@@ -957,12 +957,14 @@ class VideoRepository {
   // Get audio tracks for a video
   Future<List<AudioTrack>> getVideoAudioTracks(String videoId) async {
     try {
+      dev.log('Fetching audio tracks for video $videoId', name: 'VideoRepository');
       final querySnapshot = await _firestore
           .collection(_collection)
           .doc(videoId)
-          .collection('audio_tracks')
+          .collection('audioTracks')
           .get();
       
+      dev.log('Found ${querySnapshot.docs.length} audio tracks', name: 'VideoRepository');
       return querySnapshot.docs
           .map((doc) => AudioTrack.fromFirestore(doc))
           .toList();
