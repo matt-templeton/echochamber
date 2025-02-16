@@ -43,9 +43,23 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Echo Chamber',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          colorScheme: ColorScheme.dark(
+            primary: Colors.deepPurple,
+            secondary: Colors.deepPurpleAccent,
+            background: Colors.black,
+            surface: Colors.grey[900]!,
+          ),
+          scaffoldBackgroundColor: Colors.black,
           useMaterial3: true,
+          platform: TargetPlatform.iOS,
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            },
+          ),
         ),
+        debugShowCheckedModeBanner: false,
         home: const HomeScreen(),
       ),
     );

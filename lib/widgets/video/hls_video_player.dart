@@ -455,17 +455,29 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       );
     }
 
-    return SizedBox.expand(
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final isPortrait = screenSize.height > screenSize.width;
+    
+    // Calculate video dimensions to fill screen while maintaining aspect ratio
+    double videoWidth = screenSize.width;
+    double videoHeight = screenSize.width / _aspectRatio;
+    
+    if (videoHeight < screenSize.height) {
+      videoHeight = screenSize.height;
+      videoWidth = videoHeight * _aspectRatio;
+    }
+
+    return Container(
+      color: Colors.black,
       child: MouseRegion(
         onHover: (_) {
-          // Only show controls on hover, don't try to enable audio
           if (!_showControls && mounted && _isInitialized) {
             setState(() => _showControls = true);
             _startHideControlsTimer();
           }
         },
         child: GestureDetector(
-          // Only try to enable audio on explicit interactions
           onTap: () {
             _enableAudioIfNeeded();
             _handleTap();
@@ -473,9 +485,10 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
           child: Stack(
             fit: StackFit.expand,
             children: [
+              // Center video and ensure it fills the screen
               Center(
-                child: AspectRatio(
-                  aspectRatio: _aspectRatio,
+                child: SizedBox.fromSize(
+                  size: Size(videoWidth, videoHeight),
                   child: VideoPlayer(_controller!),
                 ),
               ),
