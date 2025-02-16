@@ -81,6 +81,14 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   List<AudioTrack>? _audioTracks;
   final Map<String, VideoPlayerController> _audioControllers = {};
 
+  // Loop functionality state
+  bool _isLoopMode = false;
+  double? _loopStartPosition;
+  double? _loopEndPosition;
+  Timer? _longPressTimer;
+  Timer? _loopTimer;
+  static const Duration _longPressDuration = Duration(milliseconds: 500);
+
   // Add getter for controller
   VideoPlayerController? get controller => _controller;
 
@@ -314,6 +322,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    _longPressTimer?.cancel();
+    _loopTimer?.cancel();
     _isDisposed = true;
     _controller?.dispose();
     // Dispose all audio controllers
@@ -573,6 +583,10 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
             behavior: HitTestBehavior.opaque,
             onHorizontalDragStart: (DragStartDetails details) {
               if (!mounted || !_isInitialized) return;
+              
+              // Cancel any existing long press timer
+              _longPressTimer?.cancel();
+              
               setState(() {
                 _isDragging = true;
                 _wasPlayingBeforeDrag = _controller!.value.isPlaying;
@@ -581,25 +595,74 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                 _controller!.pause();
               }
               
-              // Handle the initial position
-              _handleSeek(details.localPosition.dx, constraints.maxWidth);
+              // If not in loop mode, handle normal seek
+              if (!_isLoopMode) {
+                _handleSeek(details.localPosition.dx, constraints.maxWidth);
+              }
             },
             onHorizontalDragUpdate: (DragUpdateDetails details) {
               if (!_isDragging || !mounted || !_isInitialized) return;
-              _handleSeek(details.localPosition.dx, constraints.maxWidth);
+              
+              if (_isLoopMode && _loopStartPosition != null) {
+                // In loop mode, update end position
+                setState(() {
+                  _loopEndPosition = (details.localPosition.dx / constraints.maxWidth)
+                      .clamp(0.0, 1.0);
+                });
+              } else {
+                _handleSeek(details.localPosition.dx, constraints.maxWidth);
+              }
             },
             onHorizontalDragEnd: (DragEndDetails details) {
               if (!mounted || !_isInitialized) return;
-              if (_wasPlayingBeforeDrag) {
+              
+              if (_isLoopMode && _loopStartPosition != null && _loopEndPosition != null) {
+                // Ensure start is before end
+                if (_loopStartPosition! > _loopEndPosition!) {
+                  final temp = _loopStartPosition;
+                  _loopStartPosition = _loopEndPosition;
+                  _loopEndPosition = temp;
+                }
+                
+                // Only start looping if region is > 1 second
+                final duration = _controller!.value.duration;
+                final loopDuration = (_loopEndPosition! - _loopStartPosition!) * duration.inMilliseconds;
+                if (loopDuration >= 1000) {
+                  _startLooping();
+                } else {
+                  _exitLoopMode();
+                }
+              } else if (_wasPlayingBeforeDrag) {
                 _controller!.play();
               }
+              
               setState(() {
                 _isDragging = false;
               });
             },
-            onTapUp: (TapUpDetails details) {
+            onTapDown: (TapDownDetails details) {
               if (!mounted || !_isInitialized) return;
-              _handleSeek(details.localPosition.dx, constraints.maxWidth);
+              
+              // Start timer for long press
+              _longPressTimer = Timer(_longPressDuration, () {
+                if (mounted) {
+                  setState(() {
+                    _isLoopMode = true;
+                    _loopStartPosition = details.localPosition.dx / constraints.maxWidth;
+                    _loopEndPosition = null;
+                  });
+                }
+              });
+            },
+            onTapUp: (TapUpDetails details) {
+              _longPressTimer?.cancel();
+              
+              if (!_isLoopMode) {
+                _handleSeek(details.localPosition.dx, constraints.maxWidth);
+              }
+            },
+            onTapCancel: () {
+              _longPressTimer?.cancel();
             },
             child: Stack(
               children: [
@@ -626,6 +689,24 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                               ),
                             ),
                           ),
+                          // Loop region highlight
+                          if (_isLoopMode && _loopStartPosition != null)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                height: 4,
+                                margin: EdgeInsets.only(
+                                  left: constraints.maxWidth * (_loopStartPosition ?? 0),
+                                ),
+                                width: constraints.maxWidth * 
+                                  ((_loopEndPosition ?? _loopStartPosition ?? 0) - (_loopStartPosition ?? 0))
+                                    .abs(),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
                           // Progress track
                           Align(
                             alignment: Alignment.centerLeft,
@@ -648,7 +729,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                                 width: 16,
                                 height: 16,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: _isLoopMode ? Colors.blue : Colors.white,
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
@@ -661,6 +742,30 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                               ),
                             ),
                           ),
+                          // Loop mode indicator
+                          if (_isLoopMode)
+                            Positioned(
+                              right: 8,
+                              top: -24,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.repeat, color: Colors.white, size: 16),
+                                    const SizedBox(width: 4),
+                                    GestureDetector(
+                                      onTap: _exitLoopMode,
+                                      child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -679,6 +784,48 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     final duration = _controller!.value.duration;
     final targetPosition = duration * progress;
     _controller!.seekTo(targetPosition);
+  }
+
+  void _startLooping() {
+    if (!mounted || !_isInitialized || _controller == null) return;
+    if (_loopStartPosition == null || _loopEndPosition == null) return;
+
+    // Cancel any existing loop timer
+    _loopTimer?.cancel();
+
+    final duration = _controller!.value.duration;
+    final startTime = duration * _loopStartPosition!;
+    final endTime = duration * _loopEndPosition!;
+
+    // Start playback from loop start
+    _controller!.seekTo(startTime);
+    _controller!.play();
+
+    // Set up loop timer to check position and loop when needed
+    _loopTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+      if (!mounted || _controller == null || !_isLoopMode) {
+        timer.cancel();
+        return;
+      }
+
+      final position = _controller!.value.position;
+      if (position >= endTime) {
+        _controller!.seekTo(startTime);
+      }
+    });
+  }
+
+  void _exitLoopMode() {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoopMode = false;
+      _loopStartPosition = null;
+      _loopEndPosition = null;
+    });
+    
+    _loopTimer?.cancel();
+    _loopTimer = null;
   }
 }
 
