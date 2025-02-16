@@ -235,9 +235,10 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   void _startHideControlsTimer() {
     _hideControlsTimer?.cancel();
     final controller = _controller;
-    if (controller != null && controller.value.isPlaying) {
+    // Don't start the hide timer if we're dragging, in loop mode, or interacting with the progress bar
+    if (controller != null && controller.value.isPlaying && !_isDragging && !_isLoopMode) {
       _hideControlsTimer = Timer(const Duration(seconds: 3), () {
-        if (mounted && !_isDragging) {
+        if (mounted && !_isDragging && !_isLoopMode) {
           setState(() => _showControls = false);
         }
       });
@@ -270,6 +271,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     final isBuffering = controller.value.isBuffering;
     if (_isBuffering != isBuffering && !_isDisposed) {
       setState(() => _isBuffering = isBuffering);
+    }
+
+    // Keep controls visible if we're dragging or in loop mode
+    if (_isDragging || _isLoopMode) {
+      setState(() => _showControls = true);
     }
 
     if (mounted && !_isDisposed) {
@@ -383,6 +389,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
               ),
               if (_isBuffering)
                 const Center(child: CircularProgressIndicator()),
+
               Positioned.fill(
                 child: AnimatedOpacity(
                   opacity: _showControls ? 1.0 : 0.0,
@@ -456,6 +463,39 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                     },
                     onTrackToggle: _handleTrackToggle,
                     onVolumeChange: _handleVolumeChange,
+                  ),
+                ),
+
+              // Loop mode indicator - moved to last position in stack
+              if (_isLoopMode)
+                Positioned(
+                  right: 8,
+                  bottom: 36 + MediaQuery.of(context).padding.bottom,  // Moved even closer to progress bar
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Material(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(4),
+                      elevation: 2,
+                      child: InkWell(
+                        onTap: () {
+                          dev.log('Loop exit button tapped', name: 'HLSVideoPlayer');
+                          _exitLoopMode();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),  // Reduced padding
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.repeat, color: Colors.white, size: 12),  // Reduced icon size
+                              const SizedBox(width: 4),  // Reduced spacing
+                              const Icon(Icons.close, color: Colors.white, size: 12),  // Reduced icon size
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -751,30 +791,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                               ),
                             ),
                           ),
-                          // Loop mode indicator
-                          if (_isLoopMode)
-                            Positioned(
-                              right: 8,
-                              top: -24,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.repeat, color: Colors.white, size: 16),
-                                    const SizedBox(width: 4),
-                                    GestureDetector(
-                                      onTap: _exitLoopMode,
-                                      child: const Icon(Icons.close, color: Colors.white, size: 16),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                     ),
@@ -825,16 +841,43 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
   }
 
   void _exitLoopMode() {
-    if (!mounted) return;
+    dev.log('_exitLoopMode called', name: 'HLSVideoPlayer');
+    if (!mounted) {
+      dev.log('Widget not mounted, exiting', name: 'HLSVideoPlayer');
+      return;
+    }
+    
+    dev.log('Controls visible: $_showControls', name: 'HLSVideoPlayer');
+    dev.log('Loop mode active: $_isLoopMode', name: 'HLSVideoPlayer');
+    
+    // Cancel the loop timer first
+    _loopTimer?.cancel();
+    _loopTimer = null;
+    dev.log('Loop timer cancelled', name: 'HLSVideoPlayer');
+
+    // Store current position before resetting loop state
+    final currentPosition = _controller?.value.position;
+    dev.log('Current position: ${currentPosition?.inMilliseconds}ms', name: 'HLSVideoPlayer');
     
     setState(() {
       _isLoopMode = false;
       _loopStartPosition = null;
       _loopEndPosition = null;
+      _isDragging = false;  // Ensure dragging state is reset
+      _showControls = true; // Keep controls visible briefly
     });
+    dev.log('Loop state reset', name: 'HLSVideoPlayer');
     
-    _loopTimer?.cancel();
-    _loopTimer = null;
+    // If we have a valid position and controller, seek to it and continue playing
+    if (currentPosition != null && _controller != null) {
+      _controller!.seekTo(currentPosition);
+      dev.log('Seeked to current position', name: 'HLSVideoPlayer');
+      if (_wasPlayingBeforeDrag) {
+        _controller!.play();
+        dev.log('Resumed playback', name: 'HLSVideoPlayer');
+        _startHideControlsTimer();
+      }
+    }
   }
 }
 
