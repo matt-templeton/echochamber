@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/audio_track_model.dart';
 import 'dart:developer' as dev;
+import 'audio_track_item.dart';
 
 // Add custom slider thumb that's just a circle with no value indicator
 class EmptyCircleThumbShape extends SliderComponentShape {
@@ -139,11 +140,10 @@ class AudioTrackControls extends StatefulWidget {
   State<AudioTrackControls> createState() => _AudioTrackControlsState();
 }
 
-class _AudioTrackControlsState extends State<AudioTrackControls> with TickerProviderStateMixin {
+class _AudioTrackControlsState extends State<AudioTrackControls> {
   final Map<String, bool> _enabledTracks = {};
   final Map<String, double> _trackVolumes = {};
   final Map<String, bool> _expandedTracks = {};
-  final Map<String, AnimationController> _volumeMeterControllers = {};
   bool _isOriginalEnabled = true;
   late final List<AudioTrack> _sortedTracks;
 
@@ -161,22 +161,8 @@ class _AudioTrackControlsState extends State<AudioTrackControls> with TickerProv
       _enabledTracks[track.id] = track.type == AudioTrackType.original;
       _trackVolumes[track.id] = 1.0;
       _expandedTracks[track.id] = false;
-      
-      // Make the animation faster and more dynamic
-      _volumeMeterControllers[track.id] = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 50),
-      )..repeat(reverse: true);
     }
     _logCurrentlyPlayingTracks();
-  }
-
-  @override
-  void dispose() {
-    for (final controller in _volumeMeterControllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
   }
 
   void _logCurrentlyPlayingTracks() {
@@ -193,18 +179,27 @@ class _AudioTrackControlsState extends State<AudioTrackControls> with TickerProv
         setState(() {
           for (final t in widget.tracks) {
             _enabledTracks[t.id] = t.id == track.id;
+            if (!_enabledTracks[t.id]!) {
+              _trackVolumes[t.id] = 0.0;
+            }
           }
           _isOriginalEnabled = true;
         });
       }
     } else {
       setState(() {
-        _enabledTracks[track.id] = !_enabledTracks[track.id]!;
+        final isEnabled = _enabledTracks[track.id] ?? false;
+        _enabledTracks[track.id] = !isEnabled;
+        final nowEnabled = _enabledTracks[track.id] ?? false;
+        if (!nowEnabled) {
+          _trackVolumes[track.id] = 0.0;
+        }
         final originalTrack = widget.tracks.firstWhere(
           (t) => t.type == AudioTrackType.original,
           orElse: () => widget.tracks.first,
         );
         _enabledTracks[originalTrack.id] = false;
+        _trackVolumes[originalTrack.id] = 0.0;
         _isOriginalEnabled = false;
       });
     }
@@ -223,21 +218,6 @@ class _AudioTrackControlsState extends State<AudioTrackControls> with TickerProv
     setState(() {
       _expandedTracks[trackId] = !(_expandedTracks[trackId] ?? false);
     });
-  }
-
-  IconData _getTrackIcon(AudioTrackType type) {
-    switch (type) {
-      case AudioTrackType.original:
-        return Icons.music_note;
-      case AudioTrackType.vocals:
-        return Icons.mic;
-      case AudioTrackType.drums:
-        return Icons.album;
-      case AudioTrackType.bass:
-        return Icons.queue_music;
-      case AudioTrackType.other:
-        return Icons.piano;
-    }
   }
 
   String _getTrackLabel(AudioTrackType type) {
@@ -313,134 +293,14 @@ class _AudioTrackControlsState extends State<AudioTrackControls> with TickerProv
                 final volume = _trackVolumes[track.id] ?? 1.0;
                 final isExpanded = _expandedTracks[track.id] ?? false;
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _toggleTrackExpansion(track.id),
-                      borderRadius: BorderRadius.circular(6),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        height: isExpanded ? 88 : 36,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Track header (always visible)
-                            SizedBox(
-                              height: 36,
-                              child: Row(
-                                children: [
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    _getTrackIcon(track.type),
-                                    color: isEnabled ? Colors.white : Colors.white38,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _getTrackLabel(track.type),
-                                      style: TextStyle(
-                                        color: isEnabled ? Colors.white : Colors.white38,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: Icon(
-                                      isEnabled ? Icons.volume_up : Icons.volume_off,
-                                      color: isEnabled ? Colors.white : Colors.white38,
-                                      size: 18,
-                                    ),
-                                    onPressed: () => _handleTrackToggle(track),
-                                    padding: EdgeInsets.zero,
-                                    visualDensity: VisualDensity.compact,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 32,
-                                      minHeight: 32,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Expanded controls with volume meter
-                            if (isExpanded)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(34, 0, 8, 8),
-                                child: Row(
-                                  children: [
-                                    const Spacer(),  // Push everything to the right
-                                    SizedBox(
-                                      width: 160,  // Increased from 120 to 160
-                                      height: 36,
-                                      child: Stack(
-                                        children: [
-                                          // Volume meter (background)
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(4),
-                                            child: SizedBox(
-                                              height: 36,
-                                              child: AnimatedBuilder(
-                                                animation: _volumeMeterControllers[track.id]!,
-                                                builder: (context, child) {
-                                                  // Create a more dynamic level simulation
-                                                  final baseLevel = _volumeMeterControllers[track.id]!.value;
-                                                  // Make the level vary more dramatically
-                                                  final level = isEnabled ? (baseLevel * baseLevel) : 0.0;
-                                                  
-                                                  return CustomPaint(
-                                                    painter: VolumeMeterPainter(
-                                                      level: level,
-                                                      value: volume,
-                                                      color: const Color(0xFF2EBD59),
-                                                    ),
-                                                    size: const Size.fromHeight(36),
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                          // Volume slider overlay
-                                          SizedBox(
-                                            height: 36,
-                                            child: SliderTheme(
-                                              data: SliderTheme.of(context).copyWith(
-                                                trackHeight: 8,  // Increased from 1
-                                                trackShape: EmptyTrackShape(),
-                                                thumbShape: const EmptyCircleThumbShape(radius: 6),
-                                                overlayShape: const RoundSliderOverlayShape(
-                                                  overlayRadius: 12,
-                                                ),
-                                                activeTrackColor: Colors.transparent,
-                                                inactiveTrackColor: Colors.transparent,
-                                                thumbColor: Colors.white,
-                                                overlayColor: Colors.white.withOpacity(0.1),
-                                              ),
-                                              child: Slider(
-                                                value: volume,
-                                                onChanged: isEnabled 
-                                                  ? (value) => _handleVolumeChange(track, value)
-                                                  : null,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                return AudioTrackItem(
+                  track: track,
+                  isEnabled: isEnabled,
+                  volume: volume,
+                  isExpanded: isExpanded,
+                  onTrackToggle: (enabled) => _handleTrackToggle(track),
+                  onVolumeChange: (volume) => _handleVolumeChange(track, volume),
+                  onTap: () => _toggleTrackExpansion(track.id),
                 );
               },
             ),
