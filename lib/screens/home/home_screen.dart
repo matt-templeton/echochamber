@@ -33,9 +33,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isInfoExpanded = true;  // Track expansion state
   bool _isAnimating = false;
   bool _isDragging = false;
+  bool _wasPlayingBeforeDrag = false;  // Add this line
   bool _wasPlayingBeforeSearch = false;
-  bool _isCommentsExpanded = false;  // Add this line
-  bool _isAudioControlsVisible = false;  // Add this line
+  bool _isCommentsExpanded = false;
+  bool _isAudioControlsVisible = false;
   HLSVideoPlayerState? _currentPlayerState;
 
   static const double _kSwipeThreshold = 0.3; // 30% of screen width
@@ -94,8 +95,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onDragStart(DragStartDetails details) {
+    if (_isDragging) return;  // Prevent multiple drag starts
     _isDragging = true;
-    _currentPlayerState?.pauseVideo();
+    _wasPlayingBeforeDrag = _currentPlayerState?.controller?.value.isPlaying ?? false;
+    if (_wasPlayingBeforeDrag) {
+      _currentPlayerState?.pauseVideo();
+    }
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
@@ -112,68 +117,61 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     
-    // Use animateTo instead of jumpTo for smoother dragging
+    // Use jumpTo for smoother dragging
     _pageController.jumpTo(_pageController.offset - dragDistance);
   }
 
   void _onDragEnd(DragEndDetails details, BuildContext context) {
     if (!_isDragging) return;
 
-    final velocity = details.primaryVelocity ?? 0;
     final screenWidth = MediaQuery.of(context).size.width;
     final dragDistance = _pageController.offset - (_pageController.page ?? 0) * screenWidth;
     final dragPercentage = dragDistance.abs() / screenWidth;
 
-    // If drag was too small or velocity too low, snap back
-    if (dragPercentage < _kSwipeThreshold && velocity.abs() < 300) {
-      _pageController.animateToPage(
-        _pageController.page!.round(),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      ).then((_) {
-        // Only reset drag state and resume video after animation completes
-        _isDragging = false;
-        _currentPlayerState?.resumeVideo();
-      });
+    // If drag was too small, snap back
+    if (dragPercentage < _kSwipeThreshold) {
+      _snapToCurrentPage();
       return;
     }
 
-    // Handle swipe completion
-    if ((dragDistance > 0 && dragPercentage > _kSwipeThreshold) || velocity > 300) {
-      // Swipe right - go to previous video if possible
-      if (_videoFeedProvider.canGoBack) {
-        _pageController.previousPage(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        ).then((_) => _isDragging = false);
-      } else {
-        // Bounce back if at start
-        _pageController.animateToPage(
-          _pageController.page!.round(),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        ).then((_) {
-          _isDragging = false;
-          _currentPlayerState?.resumeVideo();
-        });
-      }
-    } else if ((dragDistance < 0 && dragPercentage > _kSwipeThreshold) || velocity < -300) {
+    // Handle swipe completion - only move one page at a time
+    if (dragDistance > 0 && _videoFeedProvider.canGoBack) {
+      // Swipe right - go to previous video
+      _moveToPage(_pageController.page!.round() - 1);
+    } else if (dragDistance < 0) {
       // Swipe left - go to next video
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      ).then((_) => _isDragging = false);
+      _moveToPage(_pageController.page!.round() + 1);
     } else {
-      // Not enough drag, bounce back
-      _pageController.animateToPage(
-        _pageController.page!.round(),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      ).then((_) {
-        _isDragging = false;
-        _currentPlayerState?.resumeVideo();
-      });
+      // If we can't go back or invalid drag, snap to current
+      _snapToCurrentPage();
     }
+  }
+
+  void _snapToCurrentPage() {
+    _pageController.animateToPage(
+      _pageController.page!.round(),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    ).then((_) {
+      _isDragging = false;
+      if (_wasPlayingBeforeDrag) {
+        _currentPlayerState?.resumeVideo();
+      }
+    });
+  }
+
+  void _moveToPage(int page) {
+    if (_isAnimating) return;
+    _isAnimating = true;
+    
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    ).then((_) {
+      _isDragging = false;
+      _isAnimating = false;
+    });
   }
 
   @override
@@ -202,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: PageView.builder(
                         scrollDirection: Axis.horizontal,
                         controller: _pageController,
-                        physics: const NeverScrollableScrollPhysics(),
+                        physics: const NeverScrollableScrollPhysics(),  // Disable built-in gestures
                         onPageChanged: (index) {
                           final currentPage = _pageController.page ?? 0;
                           if (index > currentPage) {
