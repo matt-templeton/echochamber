@@ -727,7 +727,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                 _wasPlayingBeforeDrag = _controller!.value.isPlaying;
               });
               if (_wasPlayingBeforeDrag) {
-                _controller!.pause();
+                _pauseAll();
               }
               
               // If not in loop mode, handle normal seek
@@ -768,7 +768,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
                   _exitLoopMode();
                 }
               } else if (_wasPlayingBeforeDrag) {
-                _controller!.play();
+                _playAll();
               }
               
               setState(() {
@@ -781,7 +781,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
               // Pause video immediately
               _wasPlayingBeforeDrag = _controller!.value.isPlaying;
               if (_wasPlayingBeforeDrag) {
-                _controller!.pause();
+                _pauseAll();
               }
               
               // Start timer for long press
@@ -803,6 +803,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
               
               if (!_isLoopMode) {
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
+                if (_wasPlayingBeforeDrag) {
+                  _playAll();
+                }
               }
             },
             onTapCancel: () {

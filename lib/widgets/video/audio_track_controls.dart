@@ -228,13 +228,21 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
         final nowEnabled = _enabledTracks[track.id] ?? false;
         _trackVolumes[track.id] = nowEnabled ? 0.85 : 0.0;
         
+        // Find original track
         final originalTrack = widget.tracks.firstWhere(
           (t) => t.type == AudioTrackType.original,
           orElse: () => widget.tracks.first,
         );
-        _enabledTracks[originalTrack.id] = false;
-        _trackVolumes[originalTrack.id] = 0.0;
-        _isOriginalEnabled = false;
+
+        // Check if any isolated track is enabled
+        final anyIsolatedTrackEnabled = widget.tracks.any((t) => 
+          t.type != AudioTrackType.original && (_enabledTracks[t.id] ?? false)
+        );
+
+        // Update original track state based on whether any isolated track is enabled
+        _enabledTracks[originalTrack.id] = !anyIsolatedTrackEnabled;
+        _trackVolumes[originalTrack.id] = !anyIsolatedTrackEnabled ? 0.85 : 0.0;
+        _isOriginalEnabled = !anyIsolatedTrackEnabled;
       });
     }
     
