@@ -196,7 +196,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         // Start with volume at 0
         await controller.setVolume(0.0);
         
-        // Start playback immediately
+        // Start playback immediately and seek to current position
         if (_controller?.value.isPlaying ?? false) {
           final position = _controller?.value.position;
           if (position != null) {
@@ -217,7 +217,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     final track = _audioTracks?.firstWhere((t) => t.id == trackId);
     if (track == null) return;
 
-
     // Update track state
     _enabledTracks[trackId] = enabled;
     _trackVolumes[trackId] = enabled ? 0.85 : 0.0;
@@ -225,7 +224,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (track.type == AudioTrackType.original) {
       // For original track, just control main video volume
       if (enabled) {
-        await _controller?.setVolume(0.85);  // Set to 85% volume when enabling
+        await _controller?.setVolume(0.85);
         // Mute all other tracks
         for (final controller in _audioControllers.values) {
           await controller.setVolume(0.0);
@@ -238,7 +237,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
           }
         }
       } else {
-        // If disabling original track, just mute it
         await _controller?.setVolume(0.0);
       }
     } else {
@@ -254,7 +252,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
           _trackVolumes[originalTrack.id] = 0.0;
         }
       } else {
-        // Just mute this track
         await _audioControllers[trackId]?.setVolume(0.0);
         
         // If no isolated tracks have volume > 0, unmute main video
@@ -998,14 +995,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     if (!mounted || !_isInitialized || _controller == null) return;
     if (_loopStartPosition == null || _loopEndPosition == null) return;
 
-
     // Cancel any existing loop timer
     _loopTimer?.cancel();
 
     final duration = _controller!.value.duration;
     final startTime = duration * _loopStartPosition!;
     final endTime = duration * _loopEndPosition!;
-
 
     // Only start if we have a valid loop region
     if (endTime <= startTime) {
@@ -1027,9 +1022,28 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
         return;
       }
 
-      final position = _controller!.value.position;
-      if (position >= endTime) {
+      // Check main video position
+      final mainPosition = _controller!.value.position;
+      if (mainPosition >= endTime) {
         _seekAllToPosition(startTime);
+      }
+
+      // Check all audio track positions and ensure they stay in sync
+      for (final controller in _audioControllers.values) {
+        final trackPosition = controller.value.position;
+        
+        // Check if track needs to loop
+        if (trackPosition >= endTime) {
+          controller.seekTo(startTime);
+          controller.play();
+        }
+        
+        // Check if track is out of sync with main video
+        final syncDiff = (trackPosition - mainPosition).inMilliseconds.abs();
+        if (syncDiff > 100) {  // If more than 100ms out of sync
+          controller.seekTo(mainPosition);
+          controller.play();
+        }
       }
     });
   }
@@ -1038,9 +1052,13 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     // Seek main video
     await _controller?.seekTo(position);
     
-    // Seek all audio tracks
+    // Seek ALL audio tracks, regardless of enabled state
     for (final controller in _audioControllers.values) {
       await controller.seekTo(position);
+      // Ensure track is playing if main video is playing
+      if (_controller?.value.isPlaying ?? false) {
+        await controller.play();
+      }
     }
   }
 
@@ -1048,9 +1066,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
     // Play main video
     await _controller?.play();
     
-    // Play all audio tracks
-    for (final controller in _audioControllers.values) {
+    // Play ALL audio tracks, using volume to control which are heard
+    for (final entry in _audioControllers.entries) {
+      final controller = entry.value;
+      final trackId = entry.key;
       await controller.play();
+      await controller.setVolume(_trackVolumes[trackId] ?? 0.0);
     }
   }
 

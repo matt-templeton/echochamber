@@ -16,8 +16,11 @@ class PrimaryNavBar extends StatelessWidget {
       type: BottomNavigationBarType.fixed,
       currentIndex: selectedIndex,
       onTap: onItemSelected,
-      selectedItemColor: Theme.of(context).primaryColor,
-      unselectedItemColor: Colors.grey,
+      backgroundColor: Colors.black,
+      selectedItemColor: Colors.white,
+      unselectedItemColor: Colors.grey[600],
+      showSelectedLabels: true,
+      showUnselectedLabels: true,
       items: [
         const BottomNavigationBarItem(
           icon: Icon(Icons.home),
@@ -29,10 +32,17 @@ class PrimaryNavBar extends StatelessWidget {
         ),
         // Center add button with no label and larger icon
         BottomNavigationBarItem(
-          icon: Icon(
-            Icons.add_box,
-            size: 32,
-            color: Theme.of(context).primaryColor,
+          icon: Container(
+            decoration: BoxDecoration(
+              color: Colors.deepPurple,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.all(8),
+            child: const Icon(
+              Icons.add,
+              size: 32,
+              color: Colors.white,
+            ),
           ),
           label: '',
         ),
