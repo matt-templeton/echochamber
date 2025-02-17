@@ -11,11 +11,27 @@ from spec.config import db, bucket
 from pydub import AudioSegment
 import sys
 import subprocess
+import contextlib
+import io
+import gc
+import base64
 
-# Remove global encoding setup as it interferes with yt-dlp
+# Set Python's IO encoding to UTF-8
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# Context manager for UTF-8 stdout
+@contextlib.contextmanager
+def utf8_stdout():
+    old_stdout = sys.stdout
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
 
 @https_fn.on_request(
-    memory=1024,  # Set memory limit to 1GB
+    region="us-central1",
+    memory=options.MemoryOption.GB_1,
     cors=options.CorsOptions(
         cors_origins=["*"],
         cors_methods=["POST", "OPTIONS"]
@@ -36,6 +52,8 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
         JSON response containing the MIDI file data as a base64 string
     """
     try:
+        print("\n=== Starting new transcription request ===")
+        
         # Get request data
         try:
             request_json = req.get_json()
@@ -75,10 +93,9 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                 headers={"Content-Type": "application/json"}
             )
 
-        # Get audio track info from Firestore subcollection
+        # Get audio track info from Firestore
         track_doc = db.collection("videos").document(video_id)\
                      .collection("audioTracks").document(audio_track_id).get()
-        print("TRACK DOC: ", track_doc)
         if not track_doc.exists:
             return https_fn.Response(
                 json.dumps({
@@ -102,65 +119,54 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
             )
 
         # Create temporary directory for processing
-        with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir = tempfile.mkdtemp()
+        print(f"Created temp directory: {temp_dir}")
+        
+        try:
             # Download audio file
             downloaded_audio_path = os.path.join(temp_dir, "downloaded_audio.wav")
             try:
-                print(f"Attempting to download audio from URL: {master_url}")
-                
                 # First download as TS file
                 temp_ts_path = os.path.join(temp_dir, "temp.ts")
                 ydl_opts = {
                     'format': 'bestaudio/best',
                     'outtmpl': temp_ts_path,
-                    'verbose': True,
-                    'no_warnings': False,
+                    'verbose': False,
+                    'no_warnings': True,
                     'encoding': None,
                     'legacy_server_connect': False,
                     'force_generic_extractor': True
                 }
-                print("Downloading with yt-dlp options:", ydl_opts)
                 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl = None
+                try:
                     print("Starting yt-dlp download...")
+                    ydl = yt_dlp.YoutubeDL(ydl_opts)
                     ydl.download([master_url])
-                print("yt-dlp download completed")
-                
-                # Verify the TS file exists and has content
-                if os.path.exists(temp_ts_path):
-                    ts_size = os.path.getsize(temp_ts_path)
-                    print(f"Downloaded TS file size: {ts_size} bytes")
-                else:
-                    raise Exception("TS file not found after download")
+                    print("yt-dlp download completed")
+                finally:
+                    if ydl:
+                        print("Closing yt-dlp...")
+                        ydl.close()
+                        print("yt-dlp closed")
                 
                 # Convert TS to WAV using FFmpeg
-                print("Converting TS to WAV using FFmpeg...")
+                print("Converting TS to WAV...")
                 ffmpeg_cmd = [
                     'ffmpeg', '-y',
                     '-i', temp_ts_path,
-                    '-acodec', 'pcm_s16le',  # Standard WAV codec
-                    '-ar', '44100',          # Sample rate
-                    '-ac', '2',              # Stereo
-                    '-loglevel', 'info',     # Show conversion info
+                    '-acodec', 'pcm_s16le',
+                    '-ar', '44100',
+                    '-ac', '2',
+                    '-loglevel', 'error',
                     downloaded_audio_path
                 ]
-                print(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
                 
                 result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
                 if result.returncode != 0:
-                    print("FFmpeg conversion failed!")
-                    print(f"FFmpeg stderr: {result.stderr}")
-                    print(f"FFmpeg stdout: {result.stdout}")
                     raise Exception(f"FFmpeg conversion failed with code: {result.returncode}")
                 
-                # Verify the WAV file exists and has content
-                if os.path.exists(downloaded_audio_path):
-                    wav_size = os.path.getsize(downloaded_audio_path)
-                    print(f"Converted WAV file size: {wav_size} bytes")
-                else:
-                    raise Exception("WAV file not found after conversion")
-                
-                print("Audio download and conversion completed successfully")
+                print("Audio conversion completed")
 
             except Exception as e:
                 error_detail = str(e)
@@ -178,17 +184,19 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                     headers={"Content-Type": "application/json; charset=utf-8"}
                 )
 
-            # Load the audio file
+            # Load and process audio file
+            audio = None
+            audio_duration = None
             try:
+                print("Loading audio file...")
                 audio = AudioSegment.from_wav(downloaded_audio_path)
-                print("AUDIO: ", audio)
-                # Apply time slicing if start_time or end_time is provided
+                audio_duration = len(audio) / 1000.0  # Store duration in seconds
+                
                 if start_time is not None or end_time is not None:
-                    # Convert times to milliseconds
+                    print("Applying time slicing...")
                     start_ms = int(start_time * 1000) if start_time is not None else 0
                     end_ms = int(end_time * 1000) if end_time is not None else len(audio)
                     
-                    # Validate time range
                     if start_ms < 0:
                         start_ms = 0
                     if end_ms > len(audio):
@@ -203,38 +211,52 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                             headers={"Content-Type": "application/json"}
                         )
                     
-                    # Extract the segment
                     audio = audio[start_ms:end_ms]
+                    audio_duration = len(audio) / 1000.0  # Update duration after slicing
                 
-                # Save the processed audio
                 processed_audio_path = os.path.join(temp_dir, "processed_audio.wav")
+                print(f"Exporting processed audio to: {processed_audio_path}")
                 audio.export(processed_audio_path, format="wav")
+                print("Audio export completed")
                 
-            except Exception as e:
-                return https_fn.Response(
-                    json.dumps({
-                        "success": False,
-                        "error": f"Error processing audio segment: {str(e)}"
-                    }),
-                    status=500,
-                    headers={"Content-Type": "application/json"}
-                )
-
-            # Generate MIDI using basic-pitch
+            finally:
+                if audio:
+                    print("Cleaning up audio resources...")
+                    if hasattr(audio, '_data'):
+                        print("Clearing audio data")
+                        audio._data = None
+                    if hasattr(audio, 'converter'):
+                        print(f"Audio converter type: {type(audio.converter)}")
+                        if hasattr(audio.converter, 'cleanup'):
+                            print("Cleaning up audio converter")
+                            try:
+                                audio.converter.cleanup()
+                            except Exception as e:
+                                print(f"Warning: Failed to cleanup audio converter: {e}")
+                    audio = None
+                    print("Audio resources cleanup completed")
+            
+            # Generate MIDI
             try:
-                predict_and_save(
-                    [processed_audio_path],
-                    temp_dir,
-                    model_or_model_path=ICASSP_2022_MODEL_PATH,
-                    save_midi=True,
-                    sonify_midi=False,
-                    save_model_outputs=False,
-                    save_notes=False
-                )
+                print("Generating MIDI...")
+                midi_path = os.path.join(temp_dir, "processed_audio_basic_pitch.mid")
                 
-                # Read the generated MIDI file
-                midi_path = os.path.join(temp_dir, "processed_audio.midi")
+                # Only use utf8_stdout for the MIDI generation
+                with utf8_stdout():
+                    predict_and_save(
+                        [processed_audio_path],
+                        temp_dir,
+                        model_or_model_path=ICASSP_2022_MODEL_PATH,
+                        save_midi=True,
+                        sonify_midi=False,
+                        save_model_outputs=False,
+                        save_notes=False
+                    )
+                
+                # Separate file check and reading from MIDI generation
                 if not os.path.exists(midi_path):
+                    print(f"MIDI file not found at: {midi_path}")
+                    print(f"Directory contents: {os.listdir(temp_dir)}")
                     return https_fn.Response(
                         json.dumps({
                             "success": False,
@@ -244,19 +266,31 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                         headers={"Content-Type": "application/json; charset=utf-8"}
                     )
                 
-                with open(midi_path, "rb") as f:
-                    midi_data = f.read()
+                # Read MIDI file with explicit file handling
+                print("Reading MIDI file...")
+                try:
+                    with open(midi_path, "rb") as f:
+                        midi_data = f.read()
+                    print("MIDI file read successfully")
+                except IOError as e:
+                    print(f"Error reading MIDI file: {e}")
+                    return https_fn.Response(
+                        json.dumps({
+                            "success": False,
+                            "error": f"Failed to read generated MIDI file: {str(e)}"
+                        }, ensure_ascii=False).encode('utf-8'),
+                        status=500,
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
                 
-                # Return MIDI data as base64 string
-                import base64
                 midi_base64 = base64.b64encode(midi_data).decode('utf-8')
                 
-                # Include time range in response
                 time_range = {
                     "startTime": start_time if start_time is not None else 0,
-                    "endTime": end_time if end_time is not None else audio.duration_seconds
+                    "endTime": end_time if end_time is not None else audio_duration
                 }
                 
+                print("Preparing successful response")
                 return https_fn.Response(
                     json.dumps({
                         "success": True,
@@ -271,8 +305,8 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                 
             except Exception as e:
                 error_msg = str(e)
-                # Remove any problematic characters from error message
                 error_msg = ''.join(c for c in error_msg if ord(c) < 128)
+                print(f"Error in MIDI generation: {error_msg}")
                 return https_fn.Response(
                     json.dumps({
                         "success": False,
@@ -281,11 +315,28 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                     status=500,
                     headers={"Content-Type": "application/json; charset=utf-8"}
                 )
+        finally:
+            print("\n=== Cleanup Phase ===")
+            print("Running garbage collection...")
+            gc.collect()
+            
+            print(f"Cleaning up temp directory: {temp_dir}")
+            try:
+                import shutil
+                if os.path.exists(temp_dir):
+                    print("Directory exists, attempting removal...")
+                    shutil.rmtree(temp_dir)
+                    print("Directory removed successfully")
+                else:
+                    print("Directory already removed")
+            except Exception as e:
+                print(f"Warning: Failed to clean up temporary directory: {e}")
+            print("=== Cleanup Phase Complete ===\n")
                 
     except Exception as e:
         error_msg = str(e)
-        # Remove any problematic characters from error message
         error_msg = ''.join(c for c in error_msg if ord(c) < 128)
+        print(f"Unhandled error: {error_msg}")
         return https_fn.Response(
             json.dumps({
                 "success": False,
