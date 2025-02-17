@@ -12,11 +12,7 @@ from pydub import AudioSegment
 import sys
 import subprocess
 
-# Ensure UTF-8 encoding for stdout/stderr
-if sys.platform.startswith('win'):
-    import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+# Remove global encoding setup as it interferes with yt-dlp
 
 @https_fn.on_request(
     memory=1024,  # Set memory limit to 1GB
@@ -82,7 +78,7 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
         # Get audio track info from Firestore subcollection
         track_doc = db.collection("videos").document(video_id)\
                      .collection("audioTracks").document(audio_track_id).get()
-                     
+        print("TRACK DOC: ", track_doc)
         if not track_doc.exists:
             return https_fn.Response(
                 json.dumps({
@@ -109,31 +105,41 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Download audio file
             downloaded_audio_path = os.path.join(temp_dir, "downloaded_audio.wav")
-            temp_ts_path = os.path.join(temp_dir, "temp.ts")
             try:
-                # Try direct download first using requests
                 print(f"Attempting to download audio from URL: {master_url}")
-                response = requests.get(master_url, stream=True)
-                response.raise_for_status()
-                print("GOT HERE")
-                print(response)
-                # Save the downloaded content to a temporary file
-                temp_audio_path = os.path.join(temp_dir, "temp_audio")
-                with open(temp_audio_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
                 
-                # Convert to WAV using pydub
-                audio = AudioSegment.from_file(temp_audio_path)
-                audio.export(downloaded_audio_path, format='wav')
-                print("Download and conversion completed successfully")
+                # Configure yt-dlp with HLS handling and explicit encoding settings
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': downloaded_audio_path,
+                    'extract_audio': True,
+                    'audio_format': 'wav',
+                    'verbose': True,
+                    'no_warnings': False,
+                    'encoding': None,  # Let yt-dlp handle encoding
+                    'legacy_server_connect': False,
+                    'force_generic_extractor': True
+                }
+                print("HERE")
+                print(ydl_opts)
                 
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # First try to extract info
+                    print("Extracting info...")
+                    info = ydl.extract_info(master_url, download=False)
+                    print(f"Found format: {info.get('format', 'unknown')}")
+                    
+                    # Then download
+                    print("Starting download...")
+                    ydl.download([master_url])
+                print("Download completed successfully")
+
             except Exception as e:
                 error_detail = str(e)
-                if hasattr(e, 'response'):
-                    error_detail += f"\nResponse status: {e.response.status_code}"
-                    error_detail += f"\nResponse text: {e.response.text}"
+                if hasattr(e, 'stderr'):
+                    error_detail += f"\nFFmpeg stderr: {e.stderr}"
+                if hasattr(e, 'stdout'):
+                    error_detail += f"\nFFmpeg stdout: {e.stdout}"
                     
                 return https_fn.Response(
                     json.dumps({
@@ -147,7 +153,7 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
             # Load the audio file
             try:
                 audio = AudioSegment.from_wav(downloaded_audio_path)
-                
+                print("AUDIO: ", audio)
                 # Apply time slicing if start_time or end_time is provided
                 if start_time is not None or end_time is not None:
                     # Convert times to milliseconds
