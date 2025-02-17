@@ -108,31 +108,59 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
             try:
                 print(f"Attempting to download audio from URL: {master_url}")
                 
-                # Configure yt-dlp with HLS handling and explicit encoding settings
+                # First download as TS file
+                temp_ts_path = os.path.join(temp_dir, "temp.ts")
                 ydl_opts = {
                     'format': 'bestaudio/best',
-                    'outtmpl': downloaded_audio_path,
-                    'extract_audio': True,
-                    'audio_format': 'wav',
+                    'outtmpl': temp_ts_path,
                     'verbose': True,
                     'no_warnings': False,
-                    'encoding': None,  # Let yt-dlp handle encoding
+                    'encoding': None,
                     'legacy_server_connect': False,
                     'force_generic_extractor': True
                 }
-                print("HERE")
-                print(ydl_opts)
+                print("Downloading with yt-dlp options:", ydl_opts)
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    # First try to extract info
-                    print("Extracting info...")
-                    info = ydl.extract_info(master_url, download=False)
-                    print(f"Found format: {info.get('format', 'unknown')}")
-                    
-                    # Then download
-                    print("Starting download...")
+                    print("Starting yt-dlp download...")
                     ydl.download([master_url])
-                print("Download completed successfully")
+                print("yt-dlp download completed")
+                
+                # Verify the TS file exists and has content
+                if os.path.exists(temp_ts_path):
+                    ts_size = os.path.getsize(temp_ts_path)
+                    print(f"Downloaded TS file size: {ts_size} bytes")
+                else:
+                    raise Exception("TS file not found after download")
+                
+                # Convert TS to WAV using FFmpeg
+                print("Converting TS to WAV using FFmpeg...")
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y',
+                    '-i', temp_ts_path,
+                    '-acodec', 'pcm_s16le',  # Standard WAV codec
+                    '-ar', '44100',          # Sample rate
+                    '-ac', '2',              # Stereo
+                    '-loglevel', 'info',     # Show conversion info
+                    downloaded_audio_path
+                ]
+                print(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
+                
+                result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    print("FFmpeg conversion failed!")
+                    print(f"FFmpeg stderr: {result.stderr}")
+                    print(f"FFmpeg stdout: {result.stdout}")
+                    raise Exception(f"FFmpeg conversion failed with code: {result.returncode}")
+                
+                # Verify the WAV file exists and has content
+                if os.path.exists(downloaded_audio_path):
+                    wav_size = os.path.getsize(downloaded_audio_path)
+                    print(f"Converted WAV file size: {wav_size} bytes")
+                else:
+                    raise Exception("WAV file not found after conversion")
+                
+                print("Audio download and conversion completed successfully")
 
             except Exception as e:
                 error_detail = str(e)
