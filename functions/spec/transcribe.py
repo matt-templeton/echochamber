@@ -4,11 +4,13 @@ import tempfile
 import os
 from datetime import datetime, timezone
 import yt_dlp
+import requests
 from basic_pitch.inference import predict_and_save
 from basic_pitch import ICASSP_2022_MODEL_PATH
 from spec.config import db, bucket
 from pydub import AudioSegment
 import sys
+import subprocess
 
 # Ensure UTF-8 encoding for stdout/stderr
 if sys.platform.startswith('win'):
@@ -109,63 +111,37 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
             downloaded_audio_path = os.path.join(temp_dir, "downloaded_audio.wav")
             temp_ts_path = os.path.join(temp_dir, "temp.ts")
             try:
-                # Configure yt-dlp for HLS download
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': temp_ts_path,
-                    'verbose': True,
-                    'quiet': False,
-                    'no_warnings': False,
-                }
-                
+                # Try direct download first using requests
                 print(f"Attempting to download audio from URL: {master_url}")
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([master_url])
+                response = requests.get(master_url, stream=True)
+                response.raise_for_status()
+                print("GOT HERE")
+                print(response)
+                # Save the downloaded content to a temporary file
+                temp_audio_path = os.path.join(temp_dir, "temp_audio")
+                with open(temp_audio_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
                 
-                # Convert downloaded TS file to WAV using ffmpeg directly
-                import 
-                ffmpeg_cmd = [
-                    'ffmpeg', '-y',
-                    '-i', temp_ts_path,
-                    '-acodec', 'pcm_s16le',  # Standard WAV format
-                    '-ar', '44100',          # Standard sample rate
-                    '-ac', '2',              # Stereo
-                    downloaded_audio_path
-                ]
-                
-                print(f"Converting to WAV using command: {' '.join(ffmpeg_cmd)}")
-                subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-                
-            except subprocess.CalledProcessError as e:
-                error_detail = f"FFmpeg conversion failed: {str(e)}\n"
-                if e.stdout:
-                    error_detail += f"stdout: {e.stdout.decode()}\n"
-                if e.stderr:
-                    error_detail += f"stderr: {e.stderr.decode()}"
-                    
-                return https_fn.Response(
-                    json.dumps({
-                        "success": False,
-                        "error": f"Error converting audio: {error_detail}"
-                    }),
-                    status=500,
-                    headers={"Content-Type": "application/json"}
-                )
+                # Convert to WAV using pydub
+                audio = AudioSegment.from_file(temp_audio_path)
+                audio.export(downloaded_audio_path, format='wav')
+                print("Download and conversion completed successfully")
                 
             except Exception as e:
                 error_detail = str(e)
-                if hasattr(e, 'stderr'):
-                    error_detail += f"\nFFmpeg stderr: {e.stderr}"
-                if hasattr(e, 'stdout'):
-                    error_detail += f"\nFFmpeg stdout: {e.stdout}"
+                if hasattr(e, 'response'):
+                    error_detail += f"\nResponse status: {e.response.status_code}"
+                    error_detail += f"\nResponse text: {e.response.text}"
                     
                 return https_fn.Response(
                     json.dumps({
                         "success": False,
                         "error": f"Error downloading audio: {error_detail}"
-                    }),
+                    }, ensure_ascii=False).encode('utf-8'),
                     status=500,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json; charset=utf-8"}
                 )
 
             # Load the audio file
