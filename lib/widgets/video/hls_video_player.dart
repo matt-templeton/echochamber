@@ -981,6 +981,11 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> {
       onVolumeChange: _handleVolumeChange,
       initialEnabledTracks: _enabledTracks,
       initialTrackVolumes: _trackVolumes,
+      isLoopMode: _isLoopMode,
+      loopStartTime: _loopStartPosition != null ? 
+        _controller!.value.duration.inSeconds * _loopStartPosition! : null,
+      loopEndTime: _loopEndPosition != null ? 
+        _controller!.value.duration.inSeconds * _loopEndPosition! : null,
     );
   }
 

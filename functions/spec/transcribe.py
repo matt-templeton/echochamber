@@ -146,9 +146,12 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                     ydl.download([master_url])
                 finally:
                     if ydl:
+                        print("Closing yt-dlp...")
                         ydl.close()
+                        print("yt-dlp closed")
                 
                 # Convert TS to WAV using FFmpeg
+                print("Converting TS to WAV...")
                 ffmpeg_cmd = [
                     'ffmpeg', '-y',
                     '-i', temp_ts_path,
@@ -163,6 +166,8 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                 if result.returncode != 0:
                     raise Exception(f"FFmpeg conversion failed with code: {result.returncode}")
                 
+                print("Audio conversion completed")
+
             except Exception as e:
                 error_detail = str(e)
                 if hasattr(e, 'stderr'):
@@ -183,10 +188,12 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
             audio = None
             audio_duration = None
             try:
+                print("Loading audio file...")
                 audio = AudioSegment.from_wav(downloaded_audio_path)
                 audio_duration = len(audio) / 1000.0  # Store duration in seconds
                 
                 if start_time is not None or end_time is not None:
+                    print("Applying time slicing...")
                     start_ms = int(start_time * 1000) if start_time is not None else 0
                     end_ms = int(end_time * 1000) if end_time is not None else len(audio)
                     
@@ -208,19 +215,26 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                     audio_duration = len(audio) / 1000.0  # Update duration after slicing
                 
                 processed_audio_path = os.path.join(temp_dir, f"{ts}_processed_audio.wav")
+                print(f"Exporting processed audio to: {processed_audio_path}")
                 audio.export(processed_audio_path, format="wav")
+                print("Audio export completed")
                 
             finally:
                 if audio:
+                    print("Cleaning up audio resources...")
                     if hasattr(audio, '_data'):
+                        print("Clearing audio data")
                         audio._data = None
                     if hasattr(audio, 'converter'):
+                        print(f"Audio converter type: {type(audio.converter)}")
                         if hasattr(audio.converter, 'cleanup'):
+                            print("Cleaning up audio converter")
                             try:
                                 audio.converter.cleanup()
                             except Exception as e:
                                 print(f"Warning: Failed to cleanup audio converter: {e}")
                     audio = None
+                    print("Audio resources cleanup completed")
             
             # Generate MIDI
             try:
@@ -275,7 +289,7 @@ def transcribe_to_midi(req: https_fn.Request) -> https_fn.Response:
                     json.dumps({
                         "success": True,
                         "midiData": midi_base64,
-                        "filename": f"{track_id}_{time_range['startTime']:.1f}_{time_range['endTime']:.1f}.midi",
+                        "filename": f"{track_id.split('//')[0]}_{time_range['startTime']:.1f}_{time_range['endTime']:.1f}.mid",
                         "timeRange": time_range,
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }, ensure_ascii=False).encode('utf-8'),

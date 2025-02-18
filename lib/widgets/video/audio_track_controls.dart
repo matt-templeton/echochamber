@@ -128,6 +128,9 @@ class AudioTrackControls extends StatefulWidget {
   final Function(String trackId, double volume) onVolumeChange;
   final Map<String, bool> initialEnabledTracks;
   final Map<String, double> initialTrackVolumes;
+  final bool isLoopMode;
+  final double? loopStartTime;
+  final double? loopEndTime;
 
   const AudioTrackControls({
     Key? key,
@@ -138,6 +141,9 @@ class AudioTrackControls extends StatefulWidget {
     required this.onVolumeChange,
     required this.initialEnabledTracks,
     required this.initialTrackVolumes,
+    this.isLoopMode = false,
+    this.loopStartTime,
+    this.loopEndTime,
   }) : super(key: key);
 
   @override
@@ -343,6 +349,9 @@ class _AudioTrackControlsState extends State<AudioTrackControls> {
                   onTrackToggle: (enabled) => _handleTrackToggle(track),
                   onVolumeChange: (volume) => _handleVolumeChange(track, volume),
                   onTap: () => _toggleTrackExpansion(track.id),
+                  isLoopMode: widget.isLoopMode,
+                  loopStartTime: widget.loopStartTime,
+                  loopEndTime: widget.loopEndTime,
                 );
               },
             ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/audio_track_model.dart';
+import '../../services/transcription_service.dart';
+import 'dart:developer' as dev;
 
 // Add custom slider thumb that's just a circle with no value indicator
 class EmptyCircleThumbShape extends SliderComponentShape {
@@ -141,6 +143,9 @@ class AudioTrackItem extends StatefulWidget {
   final Function(bool enabled) onTrackToggle;
   final Function(double volume) onVolumeChange;
   final VoidCallback onTap;
+  final bool isLoopMode;
+  final double? loopStartTime;
+  final double? loopEndTime;
 
   const AudioTrackItem({
     Key? key,
@@ -151,6 +156,9 @@ class AudioTrackItem extends StatefulWidget {
     required this.onTrackToggle,
     required this.onVolumeChange,
     required this.onTap,
+    this.isLoopMode = false,
+    this.loopStartTime,
+    this.loopEndTime,
   }) : super(key: key);
 
   @override
@@ -159,6 +167,7 @@ class AudioTrackItem extends StatefulWidget {
 
 class _AudioTrackItemState extends State<AudioTrackItem> with SingleTickerProviderStateMixin {
   late final AnimationController _volumeMeterController;
+  bool _isTranscribing = false;
 
   @override
   void initState() {
@@ -173,6 +182,37 @@ class _AudioTrackItemState extends State<AudioTrackItem> with SingleTickerProvid
   void dispose() {
     _volumeMeterController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleTranscribe() async {
+    if (_isTranscribing) return;
+
+    try {
+      setState(() => _isTranscribing = true);
+
+      await TranscriptionService.transcribeToMidi(
+        trackId: '${widget.track.videoId}/${widget.track.id}',
+        startTime: widget.isLoopMode ? widget.loopStartTime : null,
+        endTime: widget.isLoopMode ? widget.loopEndTime : null,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('MIDI file downloaded successfully')),
+        );
+      }
+    } catch (e) {
+      dev.log('Error transcribing track: $e', name: 'AudioTrackItem', error: e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to transcribe audio: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTranscribing = false);
+      }
+    }
   }
 
   IconData _getTrackIcon(AudioTrackType type) {
@@ -259,6 +299,21 @@ class _AudioTrackItemState extends State<AudioTrackItem> with SingleTickerProvid
                           minWidth: 32,
                           minHeight: 32,
                         ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.music_note,
+                          color: _isTranscribing ? Colors.blue : Colors.white38,
+                          size: 18,
+                        ),
+                        onPressed: _isTranscribing ? null : _handleTranscribe,
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        tooltip: 'Transcribe to MIDI',
                       ),
                     ],
                   ),
